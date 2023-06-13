@@ -12,12 +12,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # dco/c++
 find_package(NAG_dco_cpp REQUIRED)
 
-if(NOT DEFINED ENV{NAG_KUSARI_FILE})
-  message(FATAL_ERROR "Cannot use dco/c++ without license file.")
+if(_DCO_LICENSE) # AND NOT DEFINED ENV{NAG_KUSARI_FILE})
+  message(STATUS "Cannot use dco/c++ without license file. Be sure to set the 'NAG_KUSARI_FILE' environment variable.")
 endif()
 
 # compiler options
 add_compile_options(-Wall)
 
-add_executable(test_ex src/main.cpp)
-target_link_libraries(test_ex PUBLIC NAG::dco_cpp)
+add_compile_definitions(
+  DCO_STD_COMPATABILITY
+  DCO_AUTO_SUPPORT
+  DCO_INTEROPERABILITY_BOOST_INTERVAL
+  DCO_DISABLE_AVX2_WARNING
+)
+
+set(bnb_solver_headers src/solver/bnb_config.hpp src/solver/local_optima_bnb.hpp)
+add_executable(test_ex src/main.cpp ${bnb_solver_headers})
+
+get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(test_ex PUBLIC include ${NAG_dco_cpp_INCLUDE_DIRS})
+target_link_libraries(test_ex PRIVATE NAG::dco_cpp)
