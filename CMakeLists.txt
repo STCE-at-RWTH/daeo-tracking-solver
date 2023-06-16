@@ -26,9 +26,9 @@ add_compile_definitions(
   DCO_DISABLE_AVX2_WARNING
 )
 
-set(bnb_solver_headers src/solver/bnb_config.hpp src/solver/local_optima_bnb.hpp)
-add_executable(test_ex src/main.cpp ${bnb_solver_headers})
+set(bnb_solver_headers src/solver/bnb_settings.hpp src/solver/local_optima_bnb.hpp)
+add_executable(prototype src/idea_prototypes.cpp ${bnb_solver_headers})
 
 get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)
-target_include_directories(test_ex PUBLIC include ${NAG_dco_cpp_INCLUDE_DIRS})
-target_link_libraries(test_ex PRIVATE NAG::dco_cpp)
+target_include_directories(prototype PUBLIC include ${NAG_dco_cpp_INCLUDE_DIRS})
+target_link_libraries(prototype PRIVATE NAG::dco_cpp)

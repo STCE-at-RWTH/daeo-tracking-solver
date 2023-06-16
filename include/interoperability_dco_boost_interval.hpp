@@ -6,10 +6,8 @@
  * @deprecated Appears to be included in DCO 4.1-alpha-2!
  */
 
-#pragma once
-
-#define DCO_STD_COMPATIBILITY
-#define DCO_AUTO_SUPPORT
+#ifndef _DCO_BOOST_INTERVAL_PATCH_HPP
+#define _DCO_BOOST_INTERVAL_PATCH_HPP
 
 #include "boost/numeric/interval.hpp"
 #include "boost/numeric/interval/io.hpp"
@@ -49,54 +47,54 @@ namespace boost
 
         namespace interval_lib
         {
-            template <typename T, typename D>
-            struct rounding_control<dco::internal::active_type<T, D>> : detail::c99_rounding_control
-            {
-                using type = dco::internal::active_type<T, D>;
-                static type force_rounding(type const &r)
-                {
-                    type r_ = r;
-                    return r_;
-                }
-                template <class U>
-                static U to_int(const U &r) { return rint(dco::passive_value(r)); }
-            };
+            // template <typename T, typename D>
+            // struct rounding_control<dco::internal::active_type<T, D>> : detail::c99_rounding_control
+            // {
+            //     using type = dco::internal::active_type<T, D>;
+            //     static type force_rounding(type const &r)
+            //     {
+            //         type r_ = r;
+            //         return r_;
+            //     }
+            //     template <class U>
+            //     static U to_int(const U &r) { return rint(dco::passive_value(r)); }
+            // };
 
             // constants used in transc.hpp (e.g. for cos) match int definition if not defined explicitly for basetype
             namespace constants
             {
-#define BOOST_SPECIALIZE_CONSTANTS_FP(TYPE)                                                     \
-    template <>                                                                                 \
-    inline TYPE pi_lower<TYPE>() { return pi_lower<dco::mode<TYPE>::passive_t>(); }             \
-    template <>                                                                                 \
-    inline TYPE pi_upper<TYPE>() { return pi_upper<dco::mode<TYPE>::passive_t>(); }             \
-    template <>                                                                                 \
-    inline TYPE pi_half_lower<TYPE>() { return pi_half_lower<dco::mode<TYPE>::passive_t>(); }   \
-    template <>                                                                                 \
-    inline TYPE pi_half_upper<TYPE>() { return pi_half_upper<dco::mode<TYPE>::passive_t>(); }   \
-    template <>                                                                                 \
-    inline TYPE pi_twice_lower<TYPE>() { return pi_twice_lower<dco::mode<TYPE>::passive_t>(); } \
-    template <>                                                                                 \
-    inline TYPE pi_twice_upper<TYPE>() { return pi_twice_upper<dco::mode<TYPE>::passive_t>(); }
+// #define BOOST_SPECIALIZE_CONSTANTS_FP(TYPE)                                                     \
+//     template <>                                                                                 \
+//     inline TYPE pi_lower<TYPE>() { return pi_lower<dco::mode<TYPE>::passive_t>(); }             \
+//     template <>                                                                                 \
+//     inline TYPE pi_upper<TYPE>() { return pi_upper<dco::mode<TYPE>::passive_t>(); }             \
+//     template <>                                                                                 \
+//     inline TYPE pi_half_lower<TYPE>() { return pi_half_lower<dco::mode<TYPE>::passive_t>(); }   \
+//     template <>                                                                                 \
+//     inline TYPE pi_half_upper<TYPE>() { return pi_half_upper<dco::mode<TYPE>::passive_t>(); }   \
+//     template <>                                                                                 \
+//     inline TYPE pi_twice_lower<TYPE>() { return pi_twice_lower<dco::mode<TYPE>::passive_t>(); } \
+//     template <>                                                                                 \
+//     inline TYPE pi_twice_upper<TYPE>() { return pi_twice_upper<dco::mode<TYPE>::passive_t>(); }
 
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<float>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<double>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1s<float>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1s<double>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1sm<float>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1sm<double>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::gt1s<float>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::gt1s<double>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1s<dco::gt1s<float>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1s<dco::gt1s<double>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::ga1s<float>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::ga1s<double>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1sm<dco::gt1s<float>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1sm<dco::gt1s<double>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::ga1sm<float>::type>::type)
-                BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::ga1sm<double>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<float>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<double>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1s<float>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1s<double>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1sm<float>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1sm<double>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::gt1s<float>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::gt1s<double>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1s<dco::gt1s<float>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1s<dco::gt1s<double>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::ga1s<float>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::ga1s<double>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1sm<dco::gt1s<float>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::ga1sm<dco::gt1s<double>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::ga1sm<float>::type>::type)
+//                 BOOST_SPECIALIZE_CONSTANTS_FP(dco::gt1s<dco::ga1sm<double>::type>::type)
 
-#undef BOOST_SPECIALIZE_CONSTANTS_FP
+// #undef BOOST_SPECIALIZE_CONSTANTS_FP
             }
         }
     }
@@ -107,13 +105,15 @@ namespace dco
 {
     namespace folding
     {
-        template <typename BOOST_BASE_TYPE, typename ROUNDING_POLICY>
-        struct is_zero_trait<boost::numeric::interval<BOOST_BASE_TYPE, ROUNDING_POLICY>>
-        {
-            static bool get(const boost::numeric::interval<BOOST_BASE_TYPE, ROUNDING_POLICY> &x)
-            {
-                return boost::numeric::interval_lib::cereq(x, BOOST_BASE_TYPE(0));
-            }
-        };
+        // template <typename BOOST_BASE_TYPE, typename ROUNDING_POLICY>
+        // struct is_zero_trait<boost::numeric::interval<BOOST_BASE_TYPE, ROUNDING_POLICY>>
+        // {
+        //     static bool get(const boost::numeric::interval<BOOST_BASE_TYPE, ROUNDING_POLICY> &x)
+        //     {
+        //         return boost::numeric::interval_lib::cereq(x, BOOST_BASE_TYPE(0));
+        //     }
+        // };
     }
 }
+
+#endif
