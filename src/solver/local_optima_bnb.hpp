@@ -6,6 +6,7 @@
 #ifndef _LOCAL_OPTIMA_BNB_HPP // header guard
 #define _LOCAL_OPTIMA_BNB_HPP
 
+#include <bitset>
 #include <queue>
 #include <vector>
 using std::vector;
@@ -35,18 +36,24 @@ public:
     /**
      * @brief
      */
-    BNBSolverSettings<NUMERIC_T> const &m_settings;
+    BNBSolverSettings<NUMERIC_T> const m_settings;
 
-    void find_minima(vector<INTERVAL_T> domain, vector<NUMERIC_T> params)
+    /**
+     * @brief
+     */
+    BNBSolverLogger<NUMERIC_T> const m_logger;
+
+    void find_minima(vector<INTERVAL_T> domain, vector<NUMERIC_T> const &params)
     {
         size_t i = 0;
+
         std::queue<vector<INTERVAL_T>> workq;
         workq.push(domain);
 
         while (!workq.empty() && i < settings.MAXITER)
         {
             i++;
-            for (auto &item : refine_interval(workq.pop()))
+            for (auto &item : process_interval(workq.pop(), params))
             {
                 workq.push(item);
             }
@@ -61,23 +68,60 @@ private:
      *
      * @details
      */
-    vector<vector<INTERVAL_T>> refine_interval(vector<INTERVAL_T> const &x)
+    vector<vector<INTERVAL_T>> process_interval(vector<INTERVAL_T> const &x, vector<NUMERIC_T> const &params)
     {
+
         vector<vector<INTERVAL_T>> newitems;
 
-        vector<bool> dims_converged(x.size(), true);
+        vector<bool> dims_active(x.size(), true);
         for (size_t i = 0; i < x.size(); i++)
         {
-            dims_converged[i] = !(x[i].width() <= settings.TOL_X || (x[i].lower() == 0 && x[i].upper == 0));
+            dims_active[i] = (x[i].width() <= settings.TOL_X || (x[i].lower() == 0 && x[i].upper == 0));
         }
 
-        bool value_test = false;
-        bool gradient_test = false;
-        bool hessian_test = false;
+        bool val_pass = false;
+        bool grad_pass = false;
+        bool hess_pass = false;
+
         INTERVAL_T h;
-        vector<INTERVAL_T> dhdx(x.size(), INTERVAL_T::whole());
+        vector<INTERVAL_T> dhdx(x.size());
+        vector<vector<INTERVAL_T>> d2hdx2(x.size() vector<INTERVAL_T>(x.size()));
+
+        // condition for splitting
+        bool any_active = !std::none_of(dims_active.begin(), dims_active.end(),
+                                        [](bool v)
+                                        { return v; });
+        if (any_active)
+        {
+            for (auto &item : bisect_interval(x, dims_active))
+            {
+                newitems.push_back(item);
+            }
+        }
 
         return newitems;
+    }
+
+    vector<vector<INTERVAL_T>> bisect_interval(vector<INTERVAL_T> const &x, vector<bool> const &dims_active)
+    {
+        vector<vector<INTERVAL_T>> res(2, vector<INTERVAL_T>(x.size()));
+        for (size_t i = 0; i < x.size(); i++)
+        {
+            if (dims_active[i])
+            {
+            }
+            else
+            {
+            }
+        }
+        return res;
+    }
+
+    /**
+     *
+     */
+    void value_test(bitset<3> &test_status, INTERVAL_T &h, vector<NUMERIC_T> params)
+    {
     }
 
     /**
@@ -96,7 +140,6 @@ private:
     {
         // define dco types and get a pointer to the tape
         // unsure how to use ga1sm to expand this to multithreaded programs
-        // since OMP task-based programs
         using dco_mode_t = dco::ga1s<INTERVAL_T>;
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
@@ -108,16 +151,11 @@ private:
             xa[i] = x[i];
         }
         active_t ha;
-
-        // set up the tape
-        tape->reset();
         tape->register_variable(xa.begin(), xa.end());
-
         // write and interpret the tape
         ha = m_objective(x, params);
         dco::derivative(ha) = 1;
         tape->interpret_adjoint();
-
         // copy values from active variables to output variables
         h = dco::value(ha);
         for (size_t i = 0; i < x.size(); i++)
@@ -137,9 +175,34 @@ private:
      */
     void objective_hessian(vector<INTERVAL_T> const &x,
                            vector<NUMERIC_T> const &params,
-                           INTERVAL_T &h,
                            vector<vector<INTERVAL_T>> &d2hdx2)
     {
+        using dco_tangent_t = dco::gt1s<T>::type;
+        using dco_mode_t = dco::ga1s<dco_tangent_t>;
+        using active_t = dco_mode_t::type;
+        dco::smart_tape_ptr_t<dco_mode_t> tape;
+        const size_t ndims = x.size();
+        active_t ha;
+        vector<active_t> xa(ndims);
+        dco::passive_value(xa) = x;
+        tape->register_variable(xa.begin(), xa.end());
+        auto start_position = tape->get_position();
+
+        for (size_t hrow = 0; hrow < ndims; hrow++)
+        {
+            dco::derivative(dco::value(xa[hrow])) = 1; // wiggle x[hcol]
+            ha = m_objective(xa, params);
+            dco::value(dco::derivative(ha)) = 1; // set sensitivity to wobbles in y to 1
+            tape->interpret_adjoint_and_reset_to(start_position);
+            for (size_t hcol = 0; hcol < ndims; hcol++)
+            {
+                d2hdx2[hrow][hcol] = dco::derivative(dco::derivative(xa[hcol]));
+                // reset any accumulated values
+                dco::derivative(dco::derivative(xa[hcol])) = 0;
+                dco::value(dco::derivative(xa[hcol])) = 0;
+            }
+            dco::derivative(dco::value(xa[hrow])) = 0; // no longer wiggling x[hcol]
+        }
     }
 };
 

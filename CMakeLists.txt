@@ -16,6 +16,8 @@ if(_DCO_LICENSE) # AND NOT DEFINED ENV{NAG_KUSARI_FILE})
   message(STATUS "Cannot use dco/c++ without license file. Be sure to set the 'NAG_KUSARI_FILE' environment variable.")
 endif()
 
+find_package(fmt)
+
 # compiler options
 add_compile_options(-Wall)
 

@@ -172,33 +172,33 @@ void hessian(vector<T> const &x,
              vector<vector<T>> &df2dx2,
              vector<FP_T> const &params)
 {
-    using dco_bmode_t = dco::gt1s<T>::type;
-    using dco_mode_t = dco::ga1s<dco_bmode_t>;
+    using dco_tangent_t = dco::gt1s<T>::type;
+    using dco_mode_t = dco::ga1s<dco_tangent_t>;
     using active_t = dco_mode_t::type;
+
     dco::smart_tape_ptr_t<dco_mode_t> tape;
 
     const size_t ndims = x.size();
+    active_t y_active;
+    vector<active_t> x_active(ndims);
+    dco::passive_value(x_active) = x;
+    tape->register_variable(x_active.begin(), x_active.end());
+    auto start_position = tape->get_position();
 
-    for (size_t i = 0; i < ndims; i++)
+    for (size_t hrow = 0; hrow < ndims; hrow++)
     {
-        tape->reset();
-        vector<active_t> xa(ndims);
-        for (size_t j = 0; j < ndims; j++)
+        dco::derivative(dco::value(x_active[hrow])) = 1; // wiggle x[hcol]
+        y_active = f1(x_active, params);
+        dco::value(dco::derivative(y_active)) = 1; // set sensitivity to wobbles in y to 1
+        tape->interpret_adjoint_and_reset_to(start_position);
+        for (size_t hcol = 0; hcol < ndims; hcol++)
         {
-            xa[j] = x[j];
-            tape->register_variable(xa[j]);
-            dco::derivative(dco::value(xa[j])) = 1;
+            df2dx2[hrow][hcol] = dco::derivative(dco::derivative(x_active[hcol]));
+            // reset any accumulated values
+            dco::derivative(dco::derivative(x_active[hcol])) = 0;
+            dco::value(dco::derivative(x_active[hcol])) = 0;
         }
-
-        active_t ya = f1(x, params);
-        // tape->register_output_variable(ya);
-        dco::value(dco::derivative(ya)) = 1;
-        tape->interpret_adjoint();
-        for (size_t j = 0; j < ndims; j++)
-        {
-            df2dx2[i][j] = dco::derivative(dco::derivative(xa[j]));
-        }
-        dco::derivative(dco::value(xa[i])) = T(0);
+        dco::derivative(dco::value(x_active[hrow])) = 0; // no longer wiggling x[hcol]
     }
 }
 
@@ -257,7 +257,7 @@ int main(int argc, char *argv[])
         std::cout << "GRADIENT TEST PASSED" << std::endl;
         // hessian test
         vector<vector<double_ival>> d2fdx2(x.size(), vector<double_ival>(x.size()));
-        hessian_via_grad(x, d2fdx2, p);
+        hessian(x, d2fdx2, p);
         std::cout << "HESSIAN TIME" << std::endl;
         for (size_t i = 0; i < d2fdx2.size(); i++)
         {
