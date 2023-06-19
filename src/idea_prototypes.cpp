@@ -102,10 +102,36 @@ T determinant(vector<vector<T>> A)
     return det;
 }
 
+/**
+ * @brief Use Sylvester's criterion to check for postive-definiteness of a Hermitian matrix
+ * @param A Hermitian matrix A
+ * @return The positive definite-ness of the matrix.
+ */
+template <typename T>
+bool sylvesters_criterion(vector<vector<T>> const &A)
+{
+    for (size_t n = 1; n <= A.size(); n++)
+    {
+        vector<vector<T>> nth_minor(n, vector<T>(n));
+        for (size_t i = 0; i < n; i++)
+        {
+            for (size_t j = 0; j < n; j++)
+            {
+                nth_minor[i][j] = A[i][j];
+            }
+        }
+        if (determinant(nth_minor) <= 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 template <typename AT, typename PT>
 AT f1(vector<AT> const &x, PT const &params)
 {
-    return pow(x[0] - params[0], 4) - params[1] * pow(x[1], 2);
+    return pow(x[0] - params[0], 2) - params[1] * pow(x[1], 2);
 }
 
 template <typename T, typename FP_T>
@@ -264,8 +290,9 @@ int main(int argc, char *argv[])
             std::cout << print_vector(d2fdx2[i]).str() << std::endl;
         }
         double_ival det = determinant(d2fdx2);
+        bool test = sylvesters_criterion(d2fdx2);
         std::cout << "HESSIAN DETERMINANT IS " << det << std::endl;
-        if (det.lower() <= 0)
+        if (!test)
         {
             std::cout << "HESSIAN TEST FOR CONVEXITY FAILED" << std::endl;
             break;

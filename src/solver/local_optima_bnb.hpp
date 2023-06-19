@@ -6,7 +6,8 @@
 #ifndef _LOCAL_OPTIMA_BNB_HPP // header guard
 #define _LOCAL_OPTIMA_BNB_HPP
 
-#include <bitset>
+#include <algorithm>
+#include <limits>
 #include <queue>
 #include <vector>
 using std::vector;
@@ -15,6 +16,7 @@ using std::vector;
 #include "boost/numeric/interval.hpp"
 
 #include "bnb_settings.hpp"
+#include "utils.hpp"
 
 /**
  * @class LocalOptimaBNBSolver
@@ -23,11 +25,12 @@ using std::vector;
  * @tparam NUMERIC_T Type of the parameters to f(x; p).
  * @tparam INTERVAL_T Interval type (created from NUMERIC_T).
  */
-template <typename OBJECTIVE_T, typename NUMERIC_T, typename INTERVAL_T>
+template <typename OBJECTIVE_T, typename NUMERIC_T, typename POLICIES>
 class LocalOptimaBNBSolver
 {
 
 public:
+    using INTERVAL_T = boost::numeric::interval<NUMERIC_T, POLICIES>;
     /**
      * @brief The objective function h(x; p) of which to find the minima.
      */
@@ -50,56 +53,91 @@ public:
         std::queue<vector<INTERVAL_T>> workq;
         workq.push(domain);
 
+        solverstatus status;
+
         while (!workq.empty() && i < settings.MAXITER)
         {
             i++;
-            for (auto &item : process_interval(workq.pop(), params))
-            {
-                workq.push(item);
-            }
+            auto item = workq.pop();
+            auto created_intervals = process_interval(item, params, status, workq);
         }
     }
 
 private:
     /**
+     * @struct solverstatus
+     * @brief Bookkeeping for global information the solver needs to keep track of.
+     */
+    struct solverstatus
+    {
+        NUMERIC_T optima_supremum = std::numeric_limits<NUMERIC_T>::max();
+        vector<INTERVAL_T> minima_intervals;
+    };
+
+    /**
      * @brief Process an interval `x` and try to refine it via B&B.
      * @param[in] x
+     * @param[in] params
      * @return Any new intervals created by the refining process
      *
      * @details
      */
-    vector<vector<INTERVAL_T>> process_interval(vector<INTERVAL_T> const &x, vector<NUMERIC_T> const &params)
+    size_t process_interval(vector<INTERVAL_T> const &x,
+                            vector<NUMERIC_T> const &params,
+                            solverstatus &sstatus, std::queue<vector<INTERVAL_T>> &workq)
     {
-
-        vector<vector<INTERVAL_T>> newitems;
-
-        vector<bool> dims_active(x.size(), true);
+        vector<bool> dims_converged(x.size(), true);
+        bool allconverged = true;
         for (size_t i = 0; i < x.size(); i++)
         {
-            dims_active[i] = (x[i].width() <= settings.TOL_X || (x[i].lower() == 0 && x[i].upper == 0));
+            dims_converged[i] = (x[i].width() <= settings.TOL_X || (x[i].lower() == 0 && x[i].upper == 0));
+            allconverged = allconverged && dims_converged[i];
+        }
+        // have convergence in x
+        if (allconverged)
+        {
+            sstatus.minima_intervals.push_back(x);
+            return 0;
         }
 
-        bool val_pass = false;
+        bool val_pass = true; // not sure how to do value testing.
         bool grad_pass = false;
         bool hess_pass = false;
 
         INTERVAL_T h;
         vector<INTERVAL_T> dhdx(x.size());
-        vector<vector<INTERVAL_T>> d2hdx2(x.size() vector<INTERVAL_T>(x.size()));
-
-        // condition for splitting
-        bool any_active = !std::none_of(dims_active.begin(), dims_active.end(),
-                                        [](bool v)
-                                        { return v; });
-        if (any_active)
+        objective_gradient(x, params, h, dhdx);
+        grad_pass = std::all_of(dhdx.begin(), dhdx.end(), [](INTERVAL_T ival)
+                                { return boost::numeric::interval::zero_in(ival); });
+        // interval cannot contain a local minimum, since the derivative doesn't change sign.
+        // therefore we discard it.
+        if (!grad_pass)
         {
-            for (auto &item : bisect_interval(x, dims_active))
+            return 0;
+        }
+
+        vector<vector<INTERVAL_T>> d2hdx2(x.size() vector<INTERVAL_T>(x.size()));
+        objective_hessian(x, params, h, d2hdx2);
+        hess_pass = sylvesters_criterion(d2hdx2);
+
+        // interval contains a change of sign in the gradient, but it is not locally convex.
+        // therefore, we choose to bisect the interval and continue the search.
+        if (grad_pass && !hess_pass)
+        {
+
+            if (any_active)
             {
-                newitems.push_back(item);
+                size_t n = 0;
+                for (auto &item : bisect_interval(x, dims_converged))
+                {
+                    n++;
+                    workq.push(item);
+                }
+                return n;
             }
         }
 
-        return newitems;
+        // interval contains a change of sign in the gradient AND is locally convex
     }
 
     vector<vector<INTERVAL_T>> bisect_interval(vector<INTERVAL_T> const &x, vector<bool> const &dims_active)
@@ -107,21 +145,15 @@ private:
         vector<vector<INTERVAL_T>> res(2, vector<INTERVAL_T>(x.size()));
         for (size_t i = 0; i < x.size(); i++)
         {
-            if (dims_active[i])
+            if (!dims_active[i])
             {
+                
             }
             else
             {
             }
         }
         return res;
-    }
-
-    /**
-     *
-     */
-    void value_test(bitset<3> &test_status, INTERVAL_T &h, vector<NUMERIC_T> params)
-    {
     }
 
     /**
@@ -143,7 +175,6 @@ private:
         using dco_mode_t = dco::ga1s<INTERVAL_T>;
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
-
         // create active variables and allocate active output variables
         vector<active_t> xa(x.size());
         for (size_t i = 0; i < x.size(); i++)
@@ -165,7 +196,7 @@ private:
     }
 
     /**
-     * @brief Computes the hessian of the objective function using dco/c++ adjoint mode over tangent mode.
+     * @brief Computes the hessian of the objective function using dco/c++ tangent mode over adjoint mode.
      * @param[in] x
      * @param[in] params
      * @param[inout] h
@@ -175,9 +206,10 @@ private:
      */
     void objective_hessian(vector<INTERVAL_T> const &x,
                            vector<NUMERIC_T> const &params,
+                           INTERVAL_T &h,
                            vector<vector<INTERVAL_T>> &d2hdx2)
     {
-        using dco_tangent_t = dco::gt1s<T>::type;
+        using dco_tangent_t = dco::gt1s<INTERVAL_T>::type;
         using dco_mode_t = dco::ga1s<dco_tangent_t>;
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
@@ -192,8 +224,8 @@ private:
         {
             dco::derivative(dco::value(xa[hrow])) = 1; // wiggle x[hcol]
             ha = m_objective(xa, params);
-            dco::value(dco::derivative(ha)) = 1; // set sensitivity to wobbles in y to 1
-            tape->interpret_adjoint_and_reset_to(start_position);
+            dco::value(dco::derivative(ha)) = 1;                  // set sensitivity to wobbles in h to 1
+            tape->interpret_adjoint_and_reset_to(start_position); // interpret and rewind the tape
             for (size_t hcol = 0; hcol < ndims; hcol++)
             {
                 d2hdx2[hrow][hcol] = dco::derivative(dco::derivative(xa[hcol]));
@@ -203,6 +235,7 @@ private:
             }
             dco::derivative(dco::value(xa[hrow])) = 0; // no longer wiggling x[hcol]
         }
+        h = dco::passive_value(ha)
     }
 };
 
