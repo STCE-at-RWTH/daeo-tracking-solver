@@ -9,6 +9,19 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# project structure settings
+set(GFX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/gfx)
+set(INPUT_DATA_PATH ${CMAKE_CURRENT_SOURCE_DIR}/data/in)
+set(OUTPUT_DATA_PATH ${CMAKE_CURRENT_SOURCE_DIR}/data/out)
+foreach(p IN ITEMS ${GFX_PATH} ${INPUT_DATA_PATH} ${OUTPUT_DATA_PATH})
+  make_directory(${p})
+endforeach()
+
+add_compile_definitions(
+  INPUT_DATA_PATH=${INPUT_DATA_PATH}
+  OUTPUT_DATA_PATH=${OUTPUT_DATA_PATH}
+)
+
 # dco/c++
 find_package(NAG_dco_cpp REQUIRED)
 
@@ -28,9 +41,14 @@ add_compile_definitions(
   DCO_DISABLE_AVX2_WARNING
 )
 
-set(bnb_solver_headers src/solver/bnb_settings.hpp src/solver/local_optima_bnb.hpp)
+set(bnb_solver_headers src/solver/bnb_settings.hpp src/solver/local_optima_bnb.hpp src/solver/utils.hpp)
 add_executable(prototype src/idea_prototypes.cpp ${bnb_solver_headers})
 
 get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(prototype PUBLIC include ${NAG_dco_cpp_INCLUDE_DIRS})
-target_link_libraries(prototype PRIVATE NAG::dco_cpp)
+target_link_libraries(prototype PRIVATE NAG::dco_cpp fmt::fmt)
+
+add_executable(main src/main.cpp ${bnb_solver_headers})
+target_include_directories(main PUBLIC include ${NAG_dco_cpp_INCLUDE_DIRS})
+target_link_libraries(main PRIVATE NAG::dco_cpp fmt::fmt)
+

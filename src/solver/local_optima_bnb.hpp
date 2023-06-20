@@ -19,6 +19,17 @@ using std::vector;
 #include "utils.hpp"
 
 /**
+ * @struct BNBSolverResults
+ * @brief Bookkeeping for global information the solver needs to keep track of.
+ */
+template <typename NUMERIC_T, typename INTERVAL_T>
+struct BNBSolverResults
+{
+    NUMERIC_T optima_supremum = std::numeric_limits<NUMERIC_T>::max();
+    vector<INTERVAL_T> minima_intervals;
+};
+
+/**
  * @class LocalOptimaBNBSolver
  * @brief Finds regions containing local minima of h(x;p)
  * @tparam OBJECTIVE_T Type of the objective function.
@@ -30,7 +41,9 @@ class LocalOptimaBNBSolver
 {
 
 public:
-    using INTERVAL_T = boost::numeric::interval<NUMERIC_T, POLICIES>;
+    typedef boost::numeric::interval<NUMERIC_T, POLICIES> interval_t;
+    typedef BNBSolverResults<NUMERIC_T, interval_t> results_t;
+
     /**
      * @brief The objective function h(x; p) of which to find the minima.
      */
@@ -46,11 +59,11 @@ public:
      */
     BNBSolverLogger<NUMERIC_T> const m_logger;
 
-    void find_minima(vector<INTERVAL_T> domain, vector<NUMERIC_T> const &params)
+    solverstatus find_minima(vector<interval_t> domain, vector<NUMERIC_T> const &params)
     {
         size_t i = 0;
 
-        std::queue<vector<INTERVAL_T>> workq;
+        std::queue<vector<interval_t>> workq;
         workq.push(domain);
 
         solverstatus status;
@@ -65,26 +78,18 @@ public:
 
 private:
     /**
-     * @struct solverstatus
-     * @brief Bookkeeping for global information the solver needs to keep track of.
-     */
-    struct solverstatus
-    {
-        NUMERIC_T optima_supremum = std::numeric_limits<NUMERIC_T>::max();
-        vector<INTERVAL_T> minima_intervals;
-    };
-
-    /**
      * @brief Process an interval `x` and try to refine it via B&B.
      * @param[in] x
      * @param[in] params
+     * @param[in] sresults reference to the global solver status
+     * @param[in] workq reference to the work queue
      * @return Any new intervals created by the refining process
      *
      * @details
      */
-    size_t process_interval(vector<INTERVAL_T> const &x,
+    size_t process_interval(vector<interval_t> const &x,
                             vector<NUMERIC_T> const &params,
-                            solverstatus &sstatus, std::queue<vector<INTERVAL_T>> &workq)
+                            results_t &sresults, std::queue<vector<interval_t>> &workq)
     {
         vector<bool> dims_converged(x.size(), true);
         bool allconverged = true;
@@ -96,18 +101,17 @@ private:
         // have convergence in x
         if (allconverged)
         {
-            sstatus.minima_intervals.push_back(x);
+            sresults.minima_intervals.push_back(x);
             return 0;
         }
 
-        bool val_pass = true; // not sure how to do value testing.
         bool grad_pass = false;
         bool hess_pass = false;
 
-        INTERVAL_T h;
-        vector<INTERVAL_T> dhdx(x.size());
+        interval_t h;
+        vector<interval_t> dhdx(x.size());
         objective_gradient(x, params, h, dhdx);
-        grad_pass = std::all_of(dhdx.begin(), dhdx.end(), [](INTERVAL_T ival)
+        grad_pass = std::all_of(dhdx.begin(), dhdx.end(), [](interval_t ival)
                                 { return boost::numeric::interval::zero_in(ival); });
         // interval cannot contain a local minimum, since the derivative doesn't change sign.
         // therefore we discard it.
@@ -116,7 +120,7 @@ private:
             return 0;
         }
 
-        vector<vector<INTERVAL_T>> d2hdx2(x.size() vector<INTERVAL_T>(x.size()));
+        vector<vector<interval_t>> d2hdx2(x.size(), vector<interval_t>(x.size()));
         objective_hessian(x, params, h, d2hdx2);
         hess_pass = sylvesters_criterion(d2hdx2);
 
@@ -124,40 +128,57 @@ private:
         // therefore, we choose to bisect the interval and continue the search.
         if (grad_pass && !hess_pass)
         {
-
-            if (any_active)
+            auto items = bisect_interval(x, dims_converged);
+            for (auto &item : items)
             {
-                size_t n = 0;
-                for (auto &item : bisect_interval(x, dims_converged))
-                {
-                    n++;
-                    workq.push(item);
-                }
-                return n;
+                workq.push(i);
             }
+            return items.size();
         }
 
         // interval contains a change of sign in the gradient AND is locally convex
+        // therefore, we decide to narrow the interval via some search method
     }
 
-    vector<vector<INTERVAL_T>> bisect_interval(vector<INTERVAL_T> const &x, vector<bool> const &dims_active)
+    /**
+     * @brief Cuts the n-dimensional range @c x in each dimension that is not flagged in @c dims_converged
+     * @returns @c vector of n-dimensional intervals post-split
+     */
+    vector<vector<interval_t>> bisect_interval(vector<interval_t> const &x, vector<bool> const &dims_converged)
     {
-        vector<vector<INTERVAL_T>> res(2, vector<INTERVAL_T>(x.size()));
-        for (size_t i = 0; i < x.size(); i++)
+        vector<vector<interval_t>> res;
+        if (dims_converged[0])
         {
-            if (!dims_active[i])
+            res.emplace_back(1, interval_t(x[0]))
+        }
+        else
+        {
+            res.emplace_back(1, interval_t(x[0].lower(), x[0].median()));
+            res.emplace_back(1, interval_t(x[0].median(), x[0].upper()));
+        }
+        for (size_t i = 1; i < x.size(); i++)
+        {
+            size_t n = res.size();
+            for (size_t j = 0; j < n; j++)
             {
-                
-            }
-            else
-            {
+                if (dims_converged[i])
+                {
+                    res[j].emplace_back(x[i]);
+                }
+                else
+                {
+                    vector<interval_t> temp(res[j]);
+                    res[j].emplace_back(x[i].lower(), x[i].median());
+                    temp.emplace_back(x[i].median(), x[i].upper());
+                    res.push_back(temp);
+                }
             }
         }
         return res;
     }
 
     /**
-     * @brief Computes the gradient of the objective function using dco/c++ adjoint mode.
+     * @brief Computes the gradient of the objective function using @c dco/c++ adjoint mode.
      * @param[in] x
      * @param[in] params
      * @param[inout] h
@@ -165,14 +186,14 @@ private:
      *
      * @details
      */
-    void objective_gradient(vector<INTERVAL_T> const &x,
+    void objective_gradient(vector<interval_t> const &x,
                             vector<NUMERIC_T> const &params,
-                            INTERVAL_T &h,
-                            vector<INTERVAL_T> &dhdx)
+                            interval_t &h,
+                            vector<interval_t> &dhdx)
     {
         // define dco types and get a pointer to the tape
         // unsure how to use ga1sm to expand this to multithreaded programs
-        using dco_mode_t = dco::ga1s<INTERVAL_T>;
+        using dco_mode_t = dco::ga1s<interval_t>;
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
         // create active variables and allocate active output variables
@@ -204,12 +225,12 @@ private:
      *
      * @details
      */
-    void objective_hessian(vector<INTERVAL_T> const &x,
+    void objective_hessian(vector<interval_t> const &x,
                            vector<NUMERIC_T> const &params,
-                           INTERVAL_T &h,
-                           vector<vector<INTERVAL_T>> &d2hdx2)
+                           interval_t &h,
+                           vector<vector<interval_t>> &d2hdx2)
     {
-        using dco_tangent_t = dco::gt1s<INTERVAL_T>::type;
+        using dco_tangent_t = dco::gt1s<interval_t>::type;
         using dco_mode_t = dco::ga1s<dco_tangent_t>;
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;

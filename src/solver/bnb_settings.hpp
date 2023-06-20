@@ -27,6 +27,7 @@ struct BNBSolverSettings
 template <typename NUMERIC_T>
 class BNBSolverLogger
 {
+    
 };
 
 #endif
