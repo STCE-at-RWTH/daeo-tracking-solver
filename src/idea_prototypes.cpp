@@ -235,6 +235,8 @@ int main(int argc, char *argv[])
     vector<double> p({1.0, -2.0});
     double stepsize = 0.1;
 
+    double_ival t{x[0].lower(), x[0].upper()};
+
     double_ival y;
     vector<double_ival> dfdx(x.size());
     vector<double> dfdx_left(x.size());

@@ -1,11 +1,12 @@
 #ifndef _BNB_UTILS_HPP
 #define _BNB_UTILS_HPP
 
-#include <type_traits>
+#include <iostream>
 #include <vector>
 using std::vector;
 
 #include "boost/numeric/interval.hpp"
+#include "fmt/format.h"
 
 /**
  * @brief Get the pq-minor of square matrix A
@@ -48,6 +49,7 @@ T determinant(vector<vector<T>> A)
     // assert that A has size and is square
     assert(A.size() > 0 && A.size() == A[0].size());
     T det;
+    // write out A.size() = 1, 2, 3 explicitly to save on the creation of 2x2 and 3x3 minors
     if (A.size() == 1)
     {
         det = A[0][0];
@@ -55,6 +57,12 @@ T determinant(vector<vector<T>> A)
     else if (A.size() == 2)
     {
         det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+    }
+    else if (A.size() == 3)
+    {
+        det += A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]);
+        det -= A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]);
+        det += A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
     }
     else
     {
@@ -74,12 +82,18 @@ T determinant(vector<vector<T>> A)
     return det;
 }
 
+/**
+ * @brief Check if argument is less than or equal to zero.
+ */
 template <typename T>
 inline bool nonpositive(T arg)
 {
     return arg <= 0;
 }
 
+/**
+ * @brief Check if the lower end of the interval is less than or equal to zero.
+ */
 template <typename T, typename P>
 inline bool nonpositive(boost::numeric::interval<T, P> arg)
 {
@@ -113,4 +127,20 @@ bool sylvesters_criterion(vector<vector<T>> const &A)
     return true;
 }
 
+template <typename T>
+std::stringstream print_vector(vector<T> const &arg)
+{
+    std::stringstream out;
+    out << "[";
+    for (size_t i = 0; i < arg.size(); i++)
+    {
+        out << arg[i];
+        if (i < arg.size() - 1)
+        {
+            out << ", ";
+        };
+    }
+    out << "]";
+    return out;
+}
 #endif
