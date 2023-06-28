@@ -82,12 +82,13 @@ public:
 
         while (!workq.empty() && i < m_settings.MAXITER)
         {
-            i++;
+            std::cout << "Iteration: " << i++ << std::endl;
 
             vector<interval_t> item(workq.front());
             workq.pop();
             auto created_intervals = process_interval(item, params, sresults, workq);
-            std::cout << "did a thing and made " << created_intervals << " new things." << std::endl;
+            std::cout << "did a thing and made " << created_intervals << " new things." << std::endl
+                      << "there are still " << workq.size() << " things to do" << std::endl;
         }
 
         return sresults;
@@ -119,12 +120,7 @@ private:
 
         std::cout << "  allconverged=" << allconverged << " dims are " << print_vector(dims_converged).str() << std::endl;
 
-        // have convergence in x
-        if (allconverged)
-        {
-            sresults.minima_intervals.push_back(x);
-            return 0;
-        }
+        
 
         bool grad_pass = false;
         bool hess_pass = false;
@@ -143,13 +139,24 @@ private:
             std::cout << "  discarding interval " << print_vector(x).str() << std::endl;
             return 0;
         }
+        // have convergence in x
+        if (allconverged)
+        {
+            std::cout << "  grad test pass and convergence in all" << std::endl;
+            sresults.minima_intervals.push_back(x);
+            return 0;
+        }
 
         vector<vector<interval_t>> d2hdx2(x.size(), vector<interval_t>(x.size()));
         objective_hessian(x, params, h, d2hdx2);
         hess_pass = sylvesters_criterion(d2hdx2);
 
         std::cout << "  hessian test pass: " << hess_pass << std::endl;
-
+        std::cout << "  hessian is: " << std::endl;
+        for (auto &hrow : d2hdx2)
+        {
+            std::cout << "    " << print_vector(hrow).str() << std::endl;
+        }
         // interval contains a change of sign in the gradient, but it is not locally convex.
         // therefore, we choose to bisect the interval and continue the search.
         if (grad_pass && !hess_pass)
@@ -165,10 +172,11 @@ private:
         if (grad_pass && hess_pass)
         {
             std::cout << "  Need to narrow interval " << print_vector(x).str() << ", perhaps via gradient descent.";
+            // narrow the interval
+            sresults.minima_intervals.push_back(x);
         }
 
-        // interval contains a change of sign in the gradient AND is locally convex
-        // therefore, we decide to narrow the interval via some search method
+        
         return 0;
     }
 
@@ -238,7 +246,7 @@ private:
         active_t ha;
         tape->register_variable(xa.begin(), xa.end());
         // write and interpret the tape
-        ha = m_objective(x, params);
+        ha = m_objective(xa, params);
         dco::derivative(ha) = 1;
         tape->interpret_adjoint();
         // copy values from active variables to output variables

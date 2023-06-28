@@ -23,8 +23,8 @@ int main(int argc, char **argv)
 
     BNBSolverSettings<double> settings;
     settings.TOL_X = 1.0e-4;
-    settings.TOL_Y = 1.0e-2;
-    settings.MAXITER = 10;
+    settings.TOL_Y = 1.0e-4;
+    settings.MAXITER = 60;
 
     using solver_t = LocalOptimaBNBSolver<decltype(objective),
                                           double,

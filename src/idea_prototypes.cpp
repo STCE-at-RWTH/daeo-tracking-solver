@@ -37,7 +37,7 @@ std::stringstream print_vector(vector<T> &arg)
  * @brief Get the pq-minor of square matrix A
  */
 template <typename T>
-vector<vector<T>> minor(vector<vector<T>> const &A, const size_t p, const size_t q)
+vector<vector<T>> submatrix(vector<vector<T>> const &A, const size_t p, const size_t q)
 {
     vector<vector<T>> Apq(A.size() - 1, vector<T>(A.size() - 1));
     size_t m = 0;
@@ -91,12 +91,12 @@ T determinant(vector<vector<T>> A)
         // even-numbered minors
         for (size_t i = 0; i < A.size(); i += 2)
         {
-            det += determinant(minor(A, 0, i));
+            det += determinant(submatrix(A, 0, i));
         }
         // odd-numbered minors
         for (size_t i = 1; i < A.size(); i += 2)
         {
-            det -= determinant(minor(A, 0, i));
+            det -= determinant(submatrix(A, 0, i));
         }
     }
     return det;

@@ -9,10 +9,10 @@ using std::vector;
 #include "fmt/format.h"
 
 /**
- * @brief Get the pq-minor of square matrix A
+ * @brief Get submatrix of square matrix A formed by removing columns p and q
  */
 template <typename T>
-vector<vector<T>> minor(vector<vector<T>> const &A, const size_t p, const size_t q)
+vector<vector<T>> submatrix(vector<vector<T>> const &A, const size_t p, const size_t q)
 {
     vector<vector<T>> Apq(A.size() - 1, vector<T>(A.size() - 1));
     size_t m = 0;
@@ -66,17 +66,17 @@ T determinant(vector<vector<T>> A)
     }
     else
     {
-        // det A = \sum_{i=1}^N -1^(i-1) * det (i,1 minor of A)
+        // det A = \sum_{i=1}^N -1^(i-1) * det (i,1 submatrix of A)
         det = 0;
         // even-numbered minors
         for (size_t i = 0; i < A.size(); i += 2)
         {
-            det += determinant(minor(A, 0, i));
+            det += determinant(submatrix(A, 0, i));
         }
         // odd-numbered minors
         for (size_t i = 1; i < A.size(); i += 2)
         {
-            det -= determinant(minor(A, 0, i));
+            det -= determinant(submatrix(A, 0, i));
         }
     }
     return det;
@@ -98,6 +98,16 @@ template <typename T, typename P>
 inline bool nonpositive(boost::numeric::interval<T, P> arg)
 {
     return arg.lower() <= 0;
+}
+
+template <typename T>
+inline bool nonnegative(T arg){
+    return arg >= 0;
+}
+
+template <typename T, typename P>
+inline bool nonnegative(boost::numeric::interval<T, P> arg){
+    return arg.upper() >= 0;
 }
 
 /**
