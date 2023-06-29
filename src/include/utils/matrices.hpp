@@ -1,12 +1,11 @@
-#ifndef _BNB_UTILS_HPP
-#define _BNB_UTILS_HPP
+#ifndef _UTILS_MATRICES_HPP
+#define _UTILS_MATRICES_HPP
 
 #include <iostream>
 #include <vector>
 using std::vector;
 
 #include "boost/numeric/interval.hpp"
-#include "fmt/format.h"
 
 /**
  * @brief Get submatrix of square matrix A formed by removing columns p and q
@@ -100,13 +99,21 @@ inline bool nonpositive(boost::numeric::interval<T, P> arg)
     return arg.lower() <= 0;
 }
 
+/**
+ * @brief Check if the argument is greater than or equal to zero
+ */
 template <typename T>
-inline bool nonnegative(T arg){
+inline bool nonnegative(T arg)
+{
     return arg >= 0;
 }
 
+/**
+ * Check if the upper end of the interval is greater than or equal to zero
+ */
 template <typename T, typename P>
-inline bool nonnegative(boost::numeric::interval<T, P> arg){
+inline bool nonnegative(boost::numeric::interval<T, P> arg)
+{
     return arg.upper() >= 0;
 }
 
@@ -116,19 +123,16 @@ inline bool nonnegative(boost::numeric::interval<T, P> arg){
  * @return The positive definite-ness of the matrix.
  */
 template <typename T>
-bool sylvesters_criterion(vector<vector<T>> const &A)
+bool is_positive_definite(vector<vector<T>> const &A)
 {
     for (size_t n = 1; n <= A.size(); n++)
     {
-        vector<vector<T>> nth_principal_minor(n, vector<T>(n));
+        vector<vector<T>> nth_principal_submatrix;
         for (size_t i = 0; i < n; i++)
         {
-            for (size_t j = 0; j < n; j++)
-            {
-                nth_principal_minor[i][j] = A[i][j];
-            }
+            nth_principal_submatrix.emplace_back(A[i].begin(), A[i].begin() + n);
         }
-        auto det = determinant(nth_principal_minor);
+        auto det = determinant(nth_principal_submatrix);
         if (nonpositive(det))
         {
             return false;
@@ -137,20 +141,31 @@ bool sylvesters_criterion(vector<vector<T>> const &A)
     return true;
 }
 
+/**
+ * @brief Use Sylvester's criterion to check for negative-definiteness of a Hermitian matrix
+ * @param A Hermitian matrix A
+ * @return The negative definite-ness of the matrix.
+ */
 template <typename T>
-std::stringstream print_vector(vector<T> const &arg)
+bool is_negative_definite(vector<vector<T>> const &A)
 {
-    std::stringstream out;
-    out << "[";
-    for (size_t i = 0; i < arg.size(); i++)
+    for (size_t n = 1; n <= A.size(); n++)
     {
-        out << arg[i];
-        if (i < arg.size() - 1)
+        vector<vector<T>> nth_principal_submatrix;
+        for (size_t i = 0; i < n; i++)
         {
-            out << ", ";
-        };
+            nth_principal_submatrix.emplace_back(A[i].begin(), A[i].begin() + n);
+        }
+        auto nth_minor = determinant(nth_principal_submatrix);
+        // if an odd-numbered minor is nonnegative or an even-numbered minor is nonpositive, test fails
+        bool fail = (n & 1 && nonnegative(nth_minor)) || (!(n & 1) && nonpositive(nth_minor));
+        if (fail)
+        {
+            return false;
+        }
     }
-    out << "]";
-    return out;
+    return true;
 }
+
+
 #endif

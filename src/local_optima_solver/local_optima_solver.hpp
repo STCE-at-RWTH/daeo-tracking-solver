@@ -1,5 +1,5 @@
 /**
- * @file local_optima_bnb.hpp
+ * @file local_optima_solver.hpp
  * @author Sasha [fleming@stce.rwth-aachen.de]
  * @brief Implementation of a branch and bound solver to find regions containing local optima of f(x; p).
  */
@@ -14,8 +14,9 @@
 #include "dco.hpp"
 #include "boost/numeric/interval.hpp"
 
-#include "bnb_settings.hpp"
-#include "utils.hpp"
+#include "settings.hpp"
+#include "utils/io.hpp"
+#include "utils/matrices.hpp"
 
 using boost::numeric::median;
 using boost::numeric::width;
@@ -120,10 +121,9 @@ private:
 
         std::cout << "  allconverged=" << allconverged << " dims are " << print_vector(dims_converged).str() << std::endl;
 
-        
-
         bool grad_pass = false;
-        bool hess_pass = false;
+        bool hess_spd = false;
+        bool hess_npd = false;
 
         interval_t h;
         vector<interval_t> dhdx(x.size());
@@ -136,7 +136,7 @@ private:
         // therefore we discard it.
         if (!grad_pass)
         {
-            std::cout << "  discarding interval " << print_vector(x).str() << std::endl;
+            std::cout << "  gradient test failed, discarding interval " << print_vector(x).str() << std::endl;
             return 0;
         }
         // have convergence in x
@@ -149,34 +149,43 @@ private:
 
         vector<vector<interval_t>> d2hdx2(x.size(), vector<interval_t>(x.size()));
         objective_hessian(x, params, h, d2hdx2);
-        hess_pass = sylvesters_criterion(d2hdx2);
+        hess_spd = is_positive_definite(d2hdx2);
+        hess_npd = is_negative_definite(d2hdx2);
 
-        std::cout << "  hessian test pass: " << hess_pass << std::endl;
+        std::cout << "  hessian test for SPD: " << hess_spd << std::endl;
+        std::cout << "  hessian test for NPD: " << hess_npd << std::endl;
         std::cout << "  hessian is: " << std::endl;
         for (auto &hrow : d2hdx2)
         {
             std::cout << "    " << print_vector(hrow).str() << std::endl;
         }
-        // interval contains a change of sign in the gradient, but it is not locally convex.
-        // therefore, we choose to bisect the interval and continue the search.
-        if (grad_pass && !hess_pass)
+
+        if (hess_spd) // hessian is SPD -> h(x) on interval is convex
         {
-            auto items = bisect_interval(x, dims_converged);
-            for (auto &item : items)
+            std::cout << "  Hessian is SPD, interval contains minimum." << std::endl
+                      << "  Need to narrow interval " << print_vector(x).str() << ", perhaps via gradient descent." << std::endl;
+            auto x_res = narrow_via_bisection(x, dims_converged, params);
+            sresults.minima_intervals.push_back(x_res);
+        }
+        else if (hess_npd) // hessian is NPD -> h(x) on interval is concave
+        {
+            std::cout << "  Hessian is NPD, interval contains a maximum.\n"
+                      << "  Discarding interval." << std::endl;
+        }
+        else // second derivative test is inconclusive... cut up the interval
+        {
+
+            // interval contains a change of sign in the gradient, but it is not locally convex.
+            // therefore, we choose to bisect the interval and continue the search.
+            std::cout << "  Second derivative test not conclusive, bisecting interval." << std::endl;
+            auto ivals = bisect_interval(x, dims_converged);
+            for (auto &ival : ivals)
             {
-                workq.push(item);
+                workq.push(ival);
             }
-            return items.size();
+            return ivals.size();
         }
 
-        if (grad_pass && hess_pass)
-        {
-            std::cout << "  Need to narrow interval " << print_vector(x).str() << ", perhaps via gradient descent.";
-            // narrow the interval
-            sresults.minima_intervals.push_back(x);
-        }
-
-        
         return 0;
     }
 
@@ -184,7 +193,8 @@ private:
      * @brief Cuts the n-dimensional range @c x in each dimension that is not flagged in @c dims_converged
      * @returns @c vector of n-dimensional intervals post-split
      */
-    vector<vector<interval_t>> bisect_interval(vector<interval_t> const &x, vector<bool> const &dims_converged)
+    vector<vector<interval_t>> bisect_interval(vector<interval_t> const &x,
+                                               vector<bool> const &dims_converged)
     {
         vector<vector<interval_t>> res;
         if (dims_converged[0])
@@ -226,23 +236,21 @@ private:
      *
      * @details
      */
-    void objective_gradient(vector<interval_t> const &x,
-                            vector<NUMERIC_T> const &params,
-                            interval_t &h,
-                            vector<interval_t> &dhdx)
+    template <typename T, typename PT>
+    void objective_gradient(vector<T> const &x,
+                            vector<PT> const &params,
+                            T &h,
+                            vector<T> &dhdx)
     {
         // define dco types and get a pointer to the tape
         // unsure how to use ga1sm to expand this to multithreaded programs
-        using dco_mode_t = dco::ga1s<interval_t>;
+        using dco_mode_t = dco::ga1s<T>;
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
         tape->reset();
         // create active variables and allocate active output variables
         vector<active_t> xa(x.size());
-        for (size_t i = 0; i < x.size(); i++)
-        {
-            xa[i] = x[i];
-        }
+        dco::value(xa) = x;
         active_t ha;
         tape->register_variable(xa.begin(), xa.end());
         // write and interpret the tape
@@ -255,6 +263,65 @@ private:
         {
             dhdx[i] = dco::derivative(xa[i]);
         }
+    }
+
+    /**
+     * @brief Narrows an interval by using gradient descent from both sides...
+     */
+    void narrow_via_gradient_descent(vector<interval_t> &x, vector<NUMERIC_T> const &params)
+    {
+    }
+
+    /**
+     *
+     */
+    vector<interval_t> narrow_via_bisection(vector<interval_t> const &x_in,
+                                            vector<bool> dimsconverged,
+                                            vector<NUMERIC_T> const &params)
+    {
+        vector<interval_t> x(x_in);
+        vector<NUMERIC_T> x_m(x.size());
+        vector<NUMERIC_T> midgrad(x.size());
+        NUMERIC_T temp;
+        std::cout << "    Narrowing interval via bisection." << std::endl;
+
+        size_t iteration = 0;
+        bool converged = false;
+        while (iteration < m_settings.MAX_REFINE_ITER)
+        {
+            converged = std::all_of(dimsconverged.begin(), dimsconverged.end(),
+                                    [](bool b) -> bool
+                                    { return b; });
+            if (converged)
+            {
+                std::cout << "    Interval narrowed to tolerance at interation " << iteration << std::endl;
+                break;
+            }
+            for (size_t i = 0; i < x.size(); i++)
+            {
+                x_m[i] = median(x[i]);
+            }
+            objective_gradient(x_m, params, temp, midgrad);
+            for (size_t i = 0; i < x.size(); i++)
+            {
+                if (!dimsconverged[i])
+                {
+                    // increasing at midpoint -> minimum is to the left of midpoint
+                    if (midgrad[i] > 0)
+                    {
+                        x[i] = interval_t(x[i].lower(), x_m[i]);
+                    }
+                    else
+                    {
+                        x[i] = interval_t(x_m[i], x[i].upper());
+                    }
+                }
+                dimsconverged[i] = width(x[i]) <= m_settings.TOL_X;
+            }
+            std::cout << "    Interval is now " << print_vector(x).str() << std::endl;
+            iteration++;
+        }
+        return x;
     }
 
     /**

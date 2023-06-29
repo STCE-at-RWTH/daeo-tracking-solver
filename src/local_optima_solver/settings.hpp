@@ -1,5 +1,5 @@
 /**
- * @file bnb_settings.hpp
+ * @file settings.hpp
  * @author Sasha [fleming@stce.rwth-aachen.de]
  * @brief Defines the configuration and logging options for @ref local_optima_bnp.hpp
  */
@@ -25,9 +25,10 @@ struct BNBSolverSettings
     NUMERIC_T TOL_Y;
 
     std::size_t MAXITER = 10000;
+    std::size_t MAX_REFINE_ITER = 4;
 };
 
-enum BNB_EVENTS
+enum BNB_EVENT
 {
     INTERVAL_START,
     INTERVAL_SPLIT,
@@ -40,7 +41,8 @@ enum BNB_EVENTS
     GRADIENT_TEST_PASS,
     GRADIENT_TEST_FAIL,
 
-    HESSIAN_TEST_PASS,
+    HESSIAN_TEST_PASS_SPD,
+    HESSIAN_TEST_PASS_SND,
     HESSIAN_TEST_FAIL
 };
 

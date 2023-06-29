@@ -108,7 +108,7 @@ T determinant(vector<vector<T>> A)
  * @return The positive definite-ness of the matrix.
  */
 template <typename T>
-bool sylvesters_criterion(vector<vector<T>> const &A)
+bool is_positive_definite(vector<vector<T>> const &A)
 {
     for (size_t n = 1; n <= A.size(); n++)
     {
@@ -292,7 +292,7 @@ int main(int argc, char *argv[])
             std::cout << print_vector(d2fdx2[i]).str() << std::endl;
         }
         double_ival det = determinant(d2fdx2);
-        bool test = sylvesters_criterion(d2fdx2);
+        bool test = is_positive_definite(d2fdx2);
         std::cout << "HESSIAN DETERMINANT IS " << det << std::endl;
         if (!test)
         {

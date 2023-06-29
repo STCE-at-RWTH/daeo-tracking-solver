@@ -43,14 +43,17 @@ add_compile_definitions(
   GFX_PATH=${GFX_PATH}
 )
 
-set(bnb_solver_headers src/solver/bnb_settings.hpp src/solver/local_optima_bnb.hpp src/solver/utils.hpp)
+
+set(bnb_solver_headers src/local_optima_solver/settings.hpp src/local_optima_solver/local_optima_solver.hpp)
+set(daeo_solver_headers src/daeo_solver/daeo_solver.hpp)
+
 get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)
-add_executable(prototype src/idea_prototypes.cpp ${bnb_solver_headers})
+add_executable(prototype src/idea_prototypes.cpp ${bnb_solver_headers} ${daeo_solver_headers})
 
 
-target_include_directories(prototype PUBLIC include ${NAG_dco_cpp_INCLUDE_DIRS})
+target_include_directories(prototype PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(prototype PRIVATE NAG::dco_cpp fmt::fmt)
 
 add_executable(main src/main.cpp ${bnb_solver_headers})
-target_include_directories(main PUBLIC include ${NAG_dco_cpp_INCLUDE_DIRS})
+target_include_directories(main PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(main PRIVATE NAG::dco_cpp fmt::fmt)

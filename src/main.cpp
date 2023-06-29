@@ -3,8 +3,8 @@
 #include <vector>
 
 #include "boost/numeric/interval.hpp"
-#include "solver/bnb_settings.hpp"
-#include "solver/local_optima_bnb.hpp"
+#include "local_optima_solver/settings.hpp"
+#include "local_optima_solver/local_optima_solver.hpp"
 
 using std::vector;
 
@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     };
 
     BNBSolverSettings<double> settings;
-    settings.TOL_X = 1.0e-4;
+    settings.TOL_X = 1.0e-2;
     settings.TOL_Y = 1.0e-4;
     settings.MAXITER = 60;
 
