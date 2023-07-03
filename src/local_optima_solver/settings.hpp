@@ -26,6 +26,7 @@ struct BNBSolverSettings
 
     std::size_t MAXITER = 10000;
     std::size_t MAX_REFINE_ITER = 4;
+    
 };
 
 enum BNB_EVENT
@@ -54,6 +55,10 @@ class BNBSolverLogger
     size_t n_params;
 
     std::filesystem::path logs_directory;
+
+    void ()
 };
+
+
 
 #endif

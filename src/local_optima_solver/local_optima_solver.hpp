@@ -106,9 +106,9 @@ private:
      *
      * @details
      */
-    size_t process_interval(vector<interval_t> const &x,
-                            vector<NUMERIC_T> const &params,
-                            results_t &sresults, std::queue<vector<interval_t>> &workq)
+    void process_interval(vector<interval_t> const &x,
+                          vector<NUMERIC_T> const &params,
+                          results_t &sresults, std::queue<vector<interval_t>> &workq)
     {
         std::cout << "processing interval " << print_vector(x).str() << std::endl;
         vector<bool> dims_converged(x.size(), true);
@@ -137,56 +137,54 @@ private:
         if (!grad_pass)
         {
             std::cout << "  gradient test failed, discarding interval " << print_vector(x).str() << std::endl;
-            return 0;
         }
-        // have convergence in x
-        if (allconverged)
+        else if (allconverged)
         {
             std::cout << "  grad test pass and convergence in all" << std::endl;
             sresults.minima_intervals.push_back(x);
-            return 0;
         }
-
-        vector<vector<interval_t>> d2hdx2(x.size(), vector<interval_t>(x.size()));
-        objective_hessian(x, params, h, d2hdx2);
-        hess_spd = is_positive_definite(d2hdx2);
-        hess_npd = is_negative_definite(d2hdx2);
-
-        std::cout << "  hessian test for SPD: " << hess_spd << std::endl;
-        std::cout << "  hessian test for NPD: " << hess_npd << std::endl;
-        std::cout << "  hessian is: " << std::endl;
-        for (auto &hrow : d2hdx2)
-        {
-            std::cout << "    " << print_vector(hrow).str() << std::endl;
-        }
-
-        if (hess_spd) // hessian is SPD -> h(x) on interval is convex
-        {
-            std::cout << "  Hessian is SPD, interval contains minimum." << std::endl
-                      << "  Need to narrow interval " << print_vector(x).str() << ", perhaps via gradient descent." << std::endl;
-            auto x_res = narrow_via_bisection(x, dims_converged, params);
-            sresults.minima_intervals.push_back(x_res);
-        }
-        else if (hess_npd) // hessian is NPD -> h(x) on interval is concave
-        {
-            std::cout << "  Hessian is NPD, interval contains a maximum.\n"
-                      << "  Discarding interval." << std::endl;
-        }
-        else // second derivative test is inconclusive... cut up the interval
+        else
         {
 
-            // interval contains a change of sign in the gradient, but it is not locally convex.
-            // therefore, we choose to bisect the interval and continue the search.
-            std::cout << "  Second derivative test not conclusive, bisecting interval." << std::endl;
-            auto ivals = bisect_interval(x, dims_converged);
-            for (auto &ival : ivals)
+            vector<vector<interval_t>> d2hdx2(x.size(), vector<interval_t>(x.size()));
+            objective_hessian(x, params, h, d2hdx2);
+            hess_spd = is_positive_definite(d2hdx2);
+            hess_npd = is_negative_definite(d2hdx2);
+
+            std::cout << "  hessian test for SPD: " << hess_spd << std::endl;
+            std::cout << "  hessian test for NPD: " << hess_npd << std::endl;
+            std::cout << "  hessian is: " << std::endl;
+            for (auto &hrow : d2hdx2)
             {
-                workq.push(ival);
+                std::cout << "    " << print_vector(hrow).str() << std::endl;
             }
-            return ivals.size();
-        }
 
-        return 0;
+            if (hess_spd) // hessian is SPD -> h(x) on interval is convex
+            {
+                std::cout << "  Hessian is SPD, interval contains minimum." << std::endl
+                          << "  Need to narrow interval " << print_vector(x).str() << ", perhaps via gradient descent." << std::endl;
+                auto x_res = narrow_via_bisection(x, dims_converged, params);
+                sresults.minima_intervals.push_back(x_res);
+            }
+            else if (hess_npd) // hessian is NPD -> h(x) on interval is concave
+            {
+                std::cout << "  Hessian is NPD, interval contains a maximum.\n"
+                          << "  Discarding interval." << std::endl;
+            }
+            else // second derivative test is inconclusive... cut up the interval
+            {
+
+                // interval contains a change of sign in the gradient, but it is not locally convex.
+                // therefore, we choose to bisect the interval and continue the search.
+                std::cout << "  Second derivative test not conclusive, bisecting interval." << std::endl;
+                auto ivals = bisect_interval(x, dims_converged);
+                for (auto &ival : ivals)
+                {
+                    workq.push(ival);
+                }
+                return ivals.size();
+            }
+        }
     }
 
     /**
