@@ -85,37 +85,25 @@ T determinant(vector<vector<T>> A)
  * @brief Check if argument is less than or equal to zero.
  */
 template <typename T>
-inline bool nonpositive(T arg)
-{
-    return arg <= 0;
-}
+inline bool nonpositive(T arg) { return arg <= 0; }
 
 /**
  * @brief Check if the lower end of the interval is less than or equal to zero.
  */
 template <typename T, typename P>
-inline bool nonpositive(boost::numeric::interval<T, P> arg)
-{
-    return arg.lower() <= 0;
-}
+inline bool nonpositive(boost::numeric::interval<T, P> arg) { return arg.lower() <= 0; }
 
 /**
  * @brief Check if the argument is greater than or equal to zero
  */
 template <typename T>
-inline bool nonnegative(T arg)
-{
-    return arg >= 0;
-}
+inline bool nonnegative(T arg) { return arg >= 0; }
 
 /**
- * Check if the upper end of the interval is greater than or equal to zero
+ * @brief Check if the upper end of the interval is greater than or equal to zero
  */
 template <typename T, typename P>
-inline bool nonnegative(boost::numeric::interval<T, P> arg)
-{
-    return arg.upper() >= 0;
-}
+inline bool nonnegative(boost::numeric::interval<T, P> arg) { return arg.upper() >= 0; }
 
 /**
  * @brief Use Sylvester's criterion to check for postive-definiteness of a Hermitian matrix
@@ -166,6 +154,5 @@ bool is_negative_definite(vector<vector<T>> const &A)
     }
     return true;
 }
-
 
 #endif

@@ -3,8 +3,8 @@
 #include <vector>
 
 #include "boost/numeric/interval.hpp"
-#include "local_optima_solver/settings.hpp"
-#include "local_optima_solver/local_optima_solver.hpp"
+#include "solver/settings.hpp"
+#include "solver/local_optima_solver.hpp"
 
 using std::vector;
 

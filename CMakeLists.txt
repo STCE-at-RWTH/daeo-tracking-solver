@@ -44,13 +44,12 @@ add_compile_definitions(
 )
 
 
-set(bnb_solver_headers src/local_optima_solver/settings.hpp src/local_optima_solver/local_optima_solver.hpp)
-set(daeo_solver_headers src/daeo_solver.hpp)
+set(bnb_solver_headers src/solver/settings.hpp src/solver/local_optima_solver.hpp)
+set(daeo_solver_headers src/solver/daeo_solver.hpp src/solver/grids.hpp)
 
 get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)
+
 add_executable(prototype src/idea_prototypes.cpp ${bnb_solver_headers} ${daeo_solver_headers})
-
-
 target_include_directories(prototype PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(prototype PRIVATE NAG::dco_cpp fmt::fmt)
 

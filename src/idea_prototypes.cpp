@@ -7,6 +7,13 @@ using std::vector;
 using boost::numeric::square;
 
 #include "dco.hpp"
+#include "fmt/core.h"
+#include "fmt/ranges.h"
+
+#include "utils/io.hpp"
+#include "utils/matrices.hpp"
+
+#include "fmt_extensions/interval.hpp"
 
 template <typename T>
 using boost_interval_transc_t = boost::numeric::interval<
@@ -15,118 +22,6 @@ using boost_interval_transc_t = boost::numeric::interval<
                boost::numeric::interval_lib::rounded_transc_std<T>>,
            boost::numeric::interval_lib::checking_base<T>>>;
 using double_ival = boost_interval_transc_t<double>;
-
-template <typename T>
-std::stringstream print_vector(vector<T> &arg)
-{
-    std::stringstream out;
-    out << "[";
-    for (size_t i = 0; i < arg.size(); i++)
-    {
-        out << arg[i];
-        if (i < arg.size() - 1)
-        {
-            out << ", ";
-        };
-    }
-    out << "]";
-    return out;
-}
-
-/**
- * @brief Get the pq-minor of square matrix A
- */
-template <typename T>
-vector<vector<T>> submatrix(vector<vector<T>> const &A, const size_t p, const size_t q)
-{
-    vector<vector<T>> Apq(A.size() - 1, vector<T>(A.size() - 1));
-    size_t m = 0;
-    size_t n = 0;
-    // iterate over A and Apq but skip indexing Apq if i == p or j == q
-    for (size_t i = 0; i < A.size(); i++)
-    {
-        if (i == p)
-        {
-            continue;
-        }
-
-        for (size_t j = 0; j < A.size(); j++)
-        {
-            if (j == q)
-            {
-                continue;
-            }
-            Apq[m][n] = A[i][j];
-            n++;
-        }
-        m++;
-    }
-
-    return Apq;
-}
-
-/**
- * @brief Compute the determinant of a square matrix A expressed as std::vector of vectors
- * @param A Square matrix.
- * @return The determinant.
- */
-template <typename T>
-T determinant(vector<vector<T>> A)
-{
-    // assert that A has size and is square
-    assert(A.size() > 0 && A.size() == A[0].size());
-    T det;
-    if (A.size() == 1)
-    {
-        det = A[0][0];
-    }
-    else if (A.size() == 2)
-    {
-        det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
-    }
-    else
-    {
-        // det A = \sum_{i=1}^N -1^(i-1) * det (i,1 minor of A)
-        det = 0;
-        // even-numbered minors
-        for (size_t i = 0; i < A.size(); i += 2)
-        {
-            det += determinant(submatrix(A, 0, i));
-        }
-        // odd-numbered minors
-        for (size_t i = 1; i < A.size(); i += 2)
-        {
-            det -= determinant(submatrix(A, 0, i));
-        }
-    }
-    return det;
-}
-
-/**
- * @brief Use Sylvester's criterion to check for postive-definiteness of a Hermitian matrix
- * @param A Hermitian matrix A
- * @return The positive definite-ness of the matrix.
- */
-template <typename T>
-bool is_positive_definite(vector<vector<T>> const &A)
-{
-    for (size_t n = 1; n <= A.size(); n++)
-    {
-        vector<vector<T>> nth_minor(n, vector<T>(n));
-        for (size_t i = 0; i < n; i++)
-        {
-            for (size_t j = 0; j < n; j++)
-            {
-                nth_minor[i][j] = A[i][j];
-            }
-        }
-        if (determinant(nth_minor) <= 0)
-        {
-            return false;
-        }
-    }
-    return true;
-}
 
 template <typename AT, typename PT>
 AT f1(vector<AT> const &x, PT const &params)
@@ -237,6 +132,9 @@ int main(int argc, char *argv[])
 
     double_ival t{x[0].lower(), x[0].upper()};
 
+    std::cout << fmt::format("using Format: {:.2e}\n", t);
+    std::cout << t << std::endl;
+
     double_ival y;
     vector<double_ival> dfdx(x.size());
     vector<double> dfdx_left(x.size());
@@ -244,7 +142,7 @@ int main(int argc, char *argv[])
     std::cout << "doing" << std::endl;
     std::cout << "Initial interval guess is " << print_vector(x).str() << std::endl
               << "Step size is " << stepsize << std::endl;
-    for (size_t step_idx = 0; step_idx < 15; step_idx++)
+    for (size_t step_idx = 0; step_idx < 2; step_idx++)
     {
         double y_left;
         double y_right;

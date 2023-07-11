@@ -7,6 +7,7 @@
 #define _LOCAL_OPTIMA_BNB_HPP
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 #include <queue>
 #include <vector>
@@ -40,7 +41,9 @@ struct BNBSolverResults
  * @tparam NUMERIC_T Type of the parameters to f(x; p).
  * @tparam INTERVAL_T Interval type (created from NUMERIC_T).
  */
-template <typename OBJECTIVE_T, typename NUMERIC_T, typename POLICIES>
+template <typename OBJECTIVE_T,
+          typename NUMERIC_T = double,
+          typename POLICIES = suggested_solver_policies<double>>
 class LocalOptimaBNBSolver
 {
 
@@ -59,22 +62,24 @@ public:
     BNBSolverSettings<NUMERIC_T> const m_settings;
 
     /**
+     * @brief The prefix name for the solver log file
+     */
+    std::string m_log_name;
+
+    /**
      * @brief Initialize the solver with an objective function and settings.
      */
     LocalOptimaBNBSolver(OBJECTIVE_T const &t_objective,
                          BNBSolverSettings<NUMERIC_T> const &t_settings)
-        : m_objective{t_objective}, m_settings{t_settings} {}
+        : m_objective{t_objective}, m_settings{t_settings}, m_log_name{"bnb_log"} {}
 
-    /**
-     * @brief
-     */
-    // BNBSolverLogger<NUMERIC_T> const m_logger;
-
-    results_t find_minima(vector<interval_t> domain, vector<NUMERIC_T> const &params)
+    results_t find_minima(vector<interval_t> domain, vector<NUMERIC_T> const &params, bool logging = false)
     {
         size_t i = 0;
 
-        std::cout << "doing the thing" << std::endl;
+        BNBSolverLogger logger(domain.size(), params.size(), m_log_name);
+        auto comp_start = std::chrono::high_resolution_clock::now();
+        logger.log_computation_begin(i, comp_start, domain);
 
         std::queue<vector<interval_t>> workq;
         workq.push(domain);
@@ -87,10 +92,12 @@ public:
 
             vector<interval_t> item(workq.front());
             workq.pop();
-            auto created_intervals = process_interval(item, params, sresults, workq);
-            std::cout << "did a thing and made " << created_intervals << " new things." << std::endl
-                      << "there are still " << workq.size() << " things to do" << std::endl;
+            process_interval(i, item, params, sresults, workq, logger, logging);
+            std::cout << "there are still " << workq.size() << " things to do" << std::endl;
         }
+
+        auto comp_end = std::chrono::high_resolution_clock::now();
+        logger.log_computation_end(i, comp_end, domain, sresults.minima_intervals.size());
 
         return sresults;
     }
@@ -106,11 +113,19 @@ private:
      *
      * @details
      */
-    void process_interval(vector<interval_t> const &x,
+    void process_interval(size_t tasknum,
+                          vector<interval_t> const &x,
                           vector<NUMERIC_T> const &params,
-                          results_t &sresults, std::queue<vector<interval_t>> &workq)
+                          results_t &sresults,
+                          std::queue<vector<interval_t>> &workq,
+                          BNBSolverLogger &logger,
+                          bool logging)
     {
-        std::cout << "processing interval " << print_vector(x).str() << std::endl;
+        if (logging)
+        {
+            auto task_start_t = std::chrono::high_resolution_clock::now();
+            logger.log_task_begin(tasknum, task_start_t, x);
+        }
         vector<bool> dims_converged(x.size(), true);
         bool allconverged = true;
         for (size_t i = 0; i < x.size(); i++)
@@ -136,11 +151,19 @@ private:
         // therefore we discard it.
         if (!grad_pass)
         {
-            std::cout << "  gradient test failed, discarding interval " << print_vector(x).str() << std::endl;
+            if (logging)
+            {
+                auto task_complete_t = std::chrono::high_resolution_clock::now();
+                logger.log_task_complete(tasknum, task_complete_t, x, 2);
+            }
         }
         else if (allconverged)
         {
-            std::cout << "  grad test pass and convergence in all" << std::endl;
+            if (logging)
+            {
+                auto task_complete_t = std::chrono::high_resolution_clock::now();
+                logger.log_task_complete(tasknum, task_complete_t, x, 1);
+            }
             sresults.minima_intervals.push_back(x);
         }
         else
@@ -164,12 +187,22 @@ private:
                 std::cout << "  Hessian is SPD, interval contains minimum." << std::endl
                           << "  Need to narrow interval " << print_vector(x).str() << ", perhaps via gradient descent." << std::endl;
                 auto x_res = narrow_via_bisection(x, dims_converged, params);
+                if (logging)
+                {
+                    auto task_complete_t = std::chrono::high_resolution_clock::now();
+                    logger.log_task_complete(tasknum, task_complete_t, x, CONVERGENCE_TEST_PASS | HESSIAN_POSITIVE_DEFINITE);
+                }
                 sresults.minima_intervals.push_back(x_res);
             }
             else if (hess_npd) // hessian is NPD -> h(x) on interval is concave
             {
                 std::cout << "  Hessian is NPD, interval contains a maximum.\n"
                           << "  Discarding interval." << std::endl;
+                if (logging)
+                {
+                    auto task_complete_t = std::chrono::high_resolution_clock::now();
+                    logger.log_task_complete(tasknum, task_complete_t, x, HESSIAN_NEGATIVE_DEFINITE);
+                }
             }
             else // second derivative test is inconclusive... cut up the interval
             {
@@ -182,7 +215,11 @@ private:
                 {
                     workq.push(ival);
                 }
-                return ivals.size();
+                if (logging)
+                {
+                    auto task_complete_t = std::chrono::high_resolution_clock::now();
+                    logger.log_task_complete(tasknum, task_complete_t, x, HESSIAN_MAYBE_INDEFINITE);
+                }
             }
         }
     }
