@@ -1,3 +1,5 @@
 # cmake and config directories
 build
 .vscode
+
+.ipynb_checkpoints
