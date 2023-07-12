@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -7,7 +8,8 @@ using std::vector;
 using boost::numeric::square;
 
 #include "dco.hpp"
-#include "fmt/core.h"
+#include "fmt/format.h"
+#include "fmt/chrono.h"
 #include "fmt/ranges.h"
 
 #include "utils/io.hpp"
@@ -123,7 +125,7 @@ void hessian(vector<T> const &x,
     }
 }
 
-int main(int argc, char *argv[])
+void dosolverproto()
 {
     vector<double_ival> x({double_ival::hull(-5, 2),
                            double_ival::hull(-4, 1)});
@@ -140,7 +142,7 @@ int main(int argc, char *argv[])
     vector<double> dfdx_left(x.size());
     vector<double> dfdx_right(x.size());
     std::cout << "doing" << std::endl;
-    std::cout << "Initial interval guess is " << print_vector(x).str() << std::endl
+    std::cout << "Initial interval guess is " << print_vector(x) << std::endl
               << "Step size is " << stepsize << std::endl;
     for (size_t step_idx = 0; step_idx < 2; step_idx++)
     {
@@ -159,9 +161,9 @@ int main(int argc, char *argv[])
         gradient(x_right, y_right, dfdx_right, p);
         std::cout << "step #" << step_idx << std::endl
                   << "y=          " << y << std::endl
-                  << "dydx=       " << print_vector(dfdx).str() << std::endl
-                  << "dydx (l)=   " << print_vector(dfdx_left).str() << std::endl
-                  << "dydx (r)=   " << print_vector(dfdx_right).str() << std::endl;
+                  << "dydx=       " << print_vector(dfdx) << std::endl
+                  << "dydx (l)=   " << print_vector(dfdx_left) << std::endl
+                  << "dydx (r)=   " << print_vector(dfdx_right) << std::endl;
 
         // gradient test
         bool fail = false;
@@ -187,7 +189,7 @@ int main(int argc, char *argv[])
         std::cout << "HESSIAN TIME" << std::endl;
         for (size_t i = 0; i < d2fdx2.size(); i++)
         {
-            std::cout << print_vector(d2fdx2[i]).str() << std::endl;
+            std::cout << print_vector(d2fdx2[i]) << std::endl;
         }
         double_ival det = determinant(d2fdx2);
         bool test = is_positive_definite(d2fdx2);
@@ -218,9 +220,29 @@ int main(int argc, char *argv[])
             }
         }
 
-        std::cout << "x=" << print_vector(x).str() << std::endl
+        std::cout << "x=" << print_vector(x) << std::endl
                   << std::endl;
     }
 
     std::cout << "done" << std::endl;
+}
+
+int main(int argc, char *argv[])
+{
+    using std::chrono::system_clock;
+    using std::chrono::time_point;
+    using time_point_t = time_point<system_clock>;
+
+    time_point_t ttime = system_clock::now();
+    fmt::println("{}", ttime);
+
+    vector<double_ival> tvec{{-1, 2}, {3, 4.5}};
+
+    auto telm = tvec[0];
+
+    constexpr bool canfmtival = fmt::is_formattable<double_ival, char>::value;
+    std::cout << std::boolalpha << canfmtival << "\n";
+
+    fmt::println("{::.4e}", tvec);
+    return 0;
 }

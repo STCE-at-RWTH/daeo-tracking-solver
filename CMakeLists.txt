@@ -38,9 +38,9 @@ add_compile_definitions(
 )
 
 add_compile_definitions(
-  DATA_INPUT_DIR=${INPUT_DATA_PATH}
-  DATA_OUTPUT_DIR=${OUTPUT_DATA_PATH}
-  GFX_PATH=${GFX_PATH}
+  DATA_INPUT_DIR="${INPUT_DATA_PATH}"
+  DATA_OUTPUT_DIR="${OUTPUT_DATA_PATH}"
+  GFX_PATH="${GFX_PATH}"
 )
 
 

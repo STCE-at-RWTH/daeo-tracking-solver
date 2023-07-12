@@ -1,13 +1,17 @@
 #ifndef _UTILS_IO_HPP
 #define _UTILS_IO_HPP
 
-#include <iostream>
+#include <sstream>
+#include <string>
 #include <vector>
+
+#include "fmt/format.h"
+#include "fmt/ostream.h"
 
 using std::vector;
 
 template <typename T>
-std::stringstream print_vector(vector<T> const &arg)
+std::string print_vector(vector<T> const &arg)
 {
     std::stringstream out;
     out << "[";
@@ -20,7 +24,7 @@ std::stringstream print_vector(vector<T> const &arg)
         };
     }
     out << "]";
-    return out;
+    return out.str();
 }
 
 

@@ -12,9 +12,12 @@
 #include <queue>
 #include <vector>
 
-#include "dco.hpp"
 #include "boost/numeric/interval.hpp"
+#include "dco.hpp"
+#include "fmt/format.h"
+#include "fmt/ranges.h"
 
+#include "fmt_extensions/interval.hpp"
 #include "settings.hpp"
 #include "utils/io.hpp"
 #include "utils/matrices.hpp"
@@ -77,15 +80,13 @@ public:
     {
         size_t i = 0;
 
-        BNBSolverLogger logger(domain.size(), params.size(), m_log_name);
+        BNBSolverLogger logger(domain.size(), params.size(), std::string(DATA_OUTPUT_DIR) + "/" + m_log_name);
         auto comp_start = std::chrono::high_resolution_clock::now();
         logger.log_computation_begin(i, comp_start, domain);
-
         std::queue<vector<interval_t>> workq;
         workq.push(domain);
 
         results_t sresults;
-
         while (!workq.empty() && i < m_settings.MAXITER)
         {
             std::cout << "Iteration: " << i++ << std::endl;
@@ -121,10 +122,10 @@ private:
                           BNBSolverLogger &logger,
                           bool logging)
     {
+        using clock = std::chrono::high_resolution_clock;
         if (logging)
         {
-            auto task_start_t = std::chrono::high_resolution_clock::now();
-            logger.log_task_begin(tasknum, task_start_t, x);
+            logger.log_task_begin(tasknum, clock::now(), x);
         }
         vector<bool> dims_converged(x.size(), true);
         bool allconverged = true;
@@ -134,7 +135,10 @@ private:
             allconverged = allconverged && dims_converged[i];
         }
 
-        std::cout << "  allconverged=" << allconverged << " dims are " << print_vector(dims_converged).str() << std::endl;
+        if (logging)
+        {
+            logger.log_convergence_test(tasknum, clock::now(), dims_converged);
+        }
 
         bool grad_pass = false;
         bool hess_spd = false;
@@ -145,24 +149,24 @@ private:
         objective_gradient(x, params, h, dhdx);
         grad_pass = std::all_of(dhdx.begin(), dhdx.end(), [](interval_t ival)
                                 { return boost::numeric::zero_in(ival); });
-        std::cout << "  h(x) is " << h << std::endl;
-        std::cout << "  gradient test passed: " << grad_pass << " and gradient is " << print_vector(dhdx).str() << std::endl;
+        if (logging)
+        {
+            logger.log_gradient_test(tasknum, clock::now(), x, h, dhdx);
+        }
         // interval cannot contain a local minimum, since the derivative doesn't change sign.
         // therefore we discard it.
         if (!grad_pass)
         {
             if (logging)
             {
-                auto task_complete_t = std::chrono::high_resolution_clock::now();
-                logger.log_task_complete(tasknum, task_complete_t, x, 2);
+                logger.log_task_complete(tasknum, clock::now(), x, GRADIENT_TEST_FAIL);
             }
         }
         else if (allconverged)
         {
             if (logging)
             {
-                auto task_complete_t = std::chrono::high_resolution_clock::now();
-                logger.log_task_complete(tasknum, task_complete_t, x, 1);
+                logger.log_task_complete(tasknum, clock::now(), x, CONVERGENCE_TEST_PASS | GRADIENT_TEST_PASS);
             }
             sresults.minima_intervals.push_back(x);
         }
@@ -173,43 +177,31 @@ private:
             objective_hessian(x, params, h, d2hdx2);
             hess_spd = is_positive_definite(d2hdx2);
             hess_npd = is_negative_definite(d2hdx2);
-
-            std::cout << "  hessian test for SPD: " << hess_spd << std::endl;
-            std::cout << "  hessian test for NPD: " << hess_npd << std::endl;
-            std::cout << "  hessian is: " << std::endl;
-            for (auto &hrow : d2hdx2)
+            TestResultCode hess_res = hess_spd ? HESSIAN_POSITIVE_DEFINITE : (hess_npd ? HESSIAN_NEGATIVE_DEFINITE : HESSIAN_MAYBE_INDEFINITE);
+            if (logging)
             {
-                std::cout << "    " << print_vector(hrow).str() << std::endl;
+                logger.log_hessian_test(tasknum, clock::now(), hess_res, x, h, dhdx, d2hdx2);
             }
-
             if (hess_spd) // hessian is SPD -> h(x) on interval is convex
             {
-                std::cout << "  Hessian is SPD, interval contains minimum." << std::endl
-                          << "  Need to narrow interval " << print_vector(x).str() << ", perhaps via gradient descent." << std::endl;
                 auto x_res = narrow_via_bisection(x, dims_converged, params);
                 if (logging)
                 {
-                    auto task_complete_t = std::chrono::high_resolution_clock::now();
-                    logger.log_task_complete(tasknum, task_complete_t, x, CONVERGENCE_TEST_PASS | HESSIAN_POSITIVE_DEFINITE);
+                    logger.log_task_complete(tasknum, clock::now(), x, CONVERGENCE_TEST_PASS | HESSIAN_POSITIVE_DEFINITE);
                 }
                 sresults.minima_intervals.push_back(x_res);
             }
             else if (hess_npd) // hessian is NPD -> h(x) on interval is concave
             {
-                std::cout << "  Hessian is NPD, interval contains a maximum.\n"
-                          << "  Discarding interval." << std::endl;
                 if (logging)
                 {
-                    auto task_complete_t = std::chrono::high_resolution_clock::now();
-                    logger.log_task_complete(tasknum, task_complete_t, x, HESSIAN_NEGATIVE_DEFINITE);
+                    logger.log_task_complete(tasknum, clock::now(), x, HESSIAN_NEGATIVE_DEFINITE);
                 }
             }
             else // second derivative test is inconclusive... cut up the interval
             {
-
                 // interval contains a change of sign in the gradient, but it is not locally convex.
                 // therefore, we choose to bisect the interval and continue the search.
-                std::cout << "  Second derivative test not conclusive, bisecting interval." << std::endl;
                 auto ivals = bisect_interval(x, dims_converged);
                 for (auto &ival : ivals)
                 {
@@ -217,8 +209,7 @@ private:
                 }
                 if (logging)
                 {
-                    auto task_complete_t = std::chrono::high_resolution_clock::now();
-                    logger.log_task_complete(tasknum, task_complete_t, x, HESSIAN_MAYBE_INDEFINITE);
+                    logger.log_task_complete(tasknum, clock::now(), x, HESSIAN_MAYBE_INDEFINITE);
                 }
             }
         }
@@ -259,6 +250,7 @@ private:
                 }
             }
         }
+        fmt::print("Split interval {::.2f} into {:::.2f}\n", x, res);
         return res;
     }
 
@@ -318,7 +310,6 @@ private:
         vector<NUMERIC_T> x_m(x.size());
         vector<NUMERIC_T> midgrad(x.size());
         NUMERIC_T temp;
-        std::cout << "    Narrowing interval via bisection." << std::endl;
 
         size_t iteration = 0;
         bool converged = false;
@@ -329,7 +320,6 @@ private:
                                     { return b; });
             if (converged)
             {
-                std::cout << "    Interval narrowed to tolerance at interation " << iteration << std::endl;
                 break;
             }
             for (size_t i = 0; i < x.size(); i++)
@@ -353,7 +343,6 @@ private:
                 }
                 dimsconverged[i] = width(x[i]) <= m_settings.TOL_X;
             }
-            std::cout << "    Interval is now " << print_vector(x).str() << std::endl;
             iteration++;
         }
         return x;
@@ -377,6 +366,7 @@ private:
         using dco_mode_t = dco::ga1s<dco_tangent_t>;
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
+
         const size_t ndims = x.size();
         active_t ha;
         vector<active_t> xa(ndims);

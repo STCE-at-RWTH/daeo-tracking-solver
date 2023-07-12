@@ -6,13 +6,13 @@
 #include "fmt/core.h"
 #include "fmt/format.h"
 
-template <typename T, typename P>
-struct fmt::formatter<boost::numeric::interval<T, P>> : public fmt::formatter<T>
-{
-    using ival_t = boost::numeric::interval<T, P>;
+using boost::numeric::interval;
 
+template <typename T, typename P>
+struct fmt::formatter<interval<T, P>> : public fmt::formatter<T>
+{
     template <typename FormatContext>
-    auto format(ival_t &ival, FormatContext &ctx)
+    auto format(interval<T, P> const &ival, FormatContext &ctx) const
     {
         auto &&out = ctx.out();
         format_to(out, "[");
