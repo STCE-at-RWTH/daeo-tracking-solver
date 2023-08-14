@@ -65,7 +65,7 @@ enum TestResultCode
 auto format_as(TestResultCode evc) { return fmt::underlying(evc); }
 
 constexpr char BNB_LOG_COLUMN_NAMES[]{"TASKNUM\tTSTAMP\tEVENTID\tEXTRACODE\tX\tH\tDHDX\tD2HDX2\tCONVERGENCE"};
-constexpr char LOG_TNUM_TSTAMP[]{"{:d}\t{:%Y-%d-%m %H:%M:%S}\t"}; //{:%Y-%d-%m %H:%M:%S},"
+constexpr char LOG_TNUM_TSTAMP[]{"{:d}\t{:%S}\t"}; //{:%Y-%d-%m %H:%M:%S},"
 constexpr char LOG_EID_EXTRA[]{"{:d}\t{:d}\t"};
 constexpr char LOG_NUMERIC_VAL[]{"{:.8e}\t"};
 constexpr char LOG_VECTOR_NUMERIC_VALS[]{"{::.8e}\t"};
@@ -78,22 +78,24 @@ class BNBSolverLogger
     size_t m_params;
     size_t m_threadcount;
 
+    sys_time_point_t m_logging_start;
+
     vector<std::ofstream> outs;
 
 public:
-    BNBSolverLogger(size_t t_dims, size_t t_params, std::string const &file)
+    BNBSolverLogger(size_t t_dims, size_t t_params, std::string const &filename)
         : m_dims{t_dims}, m_params{t_params}, m_threadcount{1}
     {
-        outs.emplace_back(fmt::format("{}_thread_0.csv", file));
+        outs.emplace_back(fmt::format("{}_thread_0.csv", filename));
         outs[0] << BNB_LOG_COLUMN_NAMES << "\n";
     };
 
-    BNBSolverLogger(size_t t_dims, size_t t_params, size_t t_threads, std::string const &file)
+    BNBSolverLogger(size_t t_dims, size_t t_params, size_t t_threads, std::string const &filename)
         : m_dims{t_dims}, m_params{t_params}, m_threadcount{t_threads}
     {
         for (size_t i = 0; i < m_threadcount; i++)
         {
-            outs.emplace_back(fmt::format("{}_thread_{:d}.csv", file, i));
+            outs.emplace_back(fmt::format("{}_thread_{:d}.csv", filename, i));
             outs[i] << BNB_LOG_COLUMN_NAMES << "\n";
         }
     };
@@ -109,7 +111,8 @@ public:
     template <typename T>
     void log_computation_begin(size_t tasknum, sys_time_point_t time, vector<T> const &domain, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        m_logging_start = time;
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, 0, 0);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, domain);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
@@ -118,7 +121,7 @@ public:
     template <typename T>
     void log_computation_end(size_t tasknum, sys_time_point_t time, vector<T> const &domain, size_t n_results, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, 1, n_results);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, domain);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
@@ -127,7 +130,7 @@ public:
     template <typename T>
     void log_task_begin(size_t tasknum, sys_time_point_t time, vector<T> const &ival, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_BEGIN, 0);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, ival);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
@@ -136,7 +139,7 @@ public:
     template <typename T>
     void log_task_complete(size_t tasknum, sys_time_point_t time, vector<T> const &ival, size_t reason, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_COMPLETE, reason);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, ival);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
@@ -144,7 +147,7 @@ public:
 
     void log_convergence_test(size_t tasknum, sys_time_point_t time, vector<bool> const &convergence, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, CONVERGENCE_TEST, 0);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\t{::d}\n", convergence);
     }
@@ -154,7 +157,7 @@ public:
                            vector<T> const &x, T const &h,
                            vector<T> const &dhdx, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, GRADIENT_TEST, 0);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
@@ -169,7 +172,7 @@ public:
                           vector<T> const &dhdx, vector<vector<T>> &ddhdxx,
                           size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, HESSIAN_TEST, testres);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);

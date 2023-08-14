@@ -35,13 +35,14 @@ struct BNBSolverResults
 {
     NUMERIC_T optima_supremum = std::numeric_limits<NUMERIC_T>::max();
     vector<vector<INTERVAL_T>> minima_intervals;
+    NUMERIC_T dh_dh_supremum = 0;
 };
 
 /**
  * @class LocalOptimaBNBSolver
- * @brief Finds regions containing local minima of h(x;p)
+ * @brief Finds regions containing local minima of h(t, x, y; p)
  * @tparam OBJECTIVE_T Type of the objective function.
- * @tparam NUMERIC_T Type of the parameters to f(x; p).
+ * @tparam NUMERIC_T Type of the parameters to h(t, x, y; p).
  * @tparam INTERVAL_T Interval type (created from NUMERIC_T).
  */
 template <typename OBJECTIVE_T,
@@ -55,7 +56,7 @@ public:
     typedef BNBSolverResults<NUMERIC_T, interval_t> results_t;
 
     /**
-     * @brief The objective function h(x; p) of which to find the minima.
+     * @brief The objective function h(t, x, y; p) of which to find the minima.
      */
     OBJECTIVE_T const &m_objective;
 
@@ -63,6 +64,11 @@ public:
      * @brief
      */
     BNBSolverSettings<NUMERIC_T> const m_settings;
+
+    /**
+     * @brief
+     */
+    std::queue<vector<INTERVAL_T>> m_workq;
 
     /**
      * @brief The prefix name for the solver log file
@@ -83,17 +89,16 @@ public:
         BNBSolverLogger logger(domain.size(), params.size(), std::string(DATA_OUTPUT_DIR) + "/" + m_log_name);
         auto comp_start = std::chrono::high_resolution_clock::now();
         logger.log_computation_begin(i, comp_start, domain);
-        std::queue<vector<interval_t>> workq;
-        workq.push(domain);
+        m_workq.push(domain);
 
         results_t sresults;
-        while (!workq.empty() && i < m_settings.MAXITER)
+        while (!m_workq.empty() && i < m_settings.MAXITER)
         {
             std::cout << "Iteration: " << i++ << std::endl;
 
-            vector<interval_t> item(workq.front());
+            vector<interval_t> item(m_workq.front());
             workq.pop();
-            process_interval(i, item, params, sresults, workq, logger, logging);
+            process_interval(i, item, params, sresults, logger, logging);
             std::cout << "there are still " << workq.size() << " things to do" << std::endl;
         }
 
@@ -105,20 +110,20 @@ public:
 
 private:
     /**
-     * @brief Process an interval `x` and try to refine it via B&B.
-     * @param[in] x
+     * @brief Process an interval `y` and try to refine it via B&B.
+     * @param[in] y
      * @param[in] params
      * @param[in] sresults reference to the global solver status
-     * @param[in] workq reference to the work queue
      * @return Any new intervals created by the refining process
      *
      * @details
      */
     void process_interval(size_t tasknum,
-                          vector<interval_t> const &x,
+                          NUMERIC_T t, 
+                          vector<NUMERIC_T> const &x,
+                          vector<interval_t> const &y,
                           vector<NUMERIC_T> const &params,
                           results_t &sresults,
-                          std::queue<vector<interval_t>> &workq,
                           BNBSolverLogger &logger,
                           bool logging)
     {
