@@ -68,7 +68,7 @@ public:
     /**
      * @brief
      */
-    std::queue<vector<INTERVAL_T>> m_workq;
+    std::queue<vector<interval_t>> m_workq;
 
     /**
      * @brief The prefix name for the solver log file
