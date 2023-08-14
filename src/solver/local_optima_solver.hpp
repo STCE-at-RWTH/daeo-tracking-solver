@@ -33,7 +33,16 @@ using std::vector;
 template <typename NUMERIC_T, typename INTERVAL_T>
 struct BNBSolverResults
 {
-    NUMERIC_T optima_supremum = std::numeric_limits<NUMERIC_T>::max();
+    /**
+     * @brief An upper bound for all local minima.
+     */
+    NUMERIC_T optima_upper_bound = std::numeric_limits<NUMERIC_T>::max();
+
+    /**
+     * @brief Estimate for the Lipschitz constant in x. abs(d/dy) <
+     */
+    NUMERIC_T K1_dx_estimate = (NUMERIC_T)0;
+
     vector<vector<INTERVAL_T>> minima_intervals;
     NUMERIC_T dh_dh_supremum = 0;
 };
@@ -128,10 +137,12 @@ private:
                           bool logging)
     {
         using clock = std::chrono::high_resolution_clock;
+        size_t result_code = 0;
         if (logging)
         {
             logger.log_task_begin(tasknum, clock::now(), x);
         }
+
         vector<bool> dims_converged(x.size(), true);
         bool allconverged = true;
         for (size_t i = 0; i < x.size(); i++)
@@ -140,82 +151,72 @@ private:
             allconverged = allconverged && dims_converged[i];
         }
 
-        if (logging)
-        {
-            logger.log_convergence_test(tasknum, clock::now(), dims_converged);
-        }
-
-        bool grad_pass = false;
-        bool hess_spd = false;
-        bool hess_npd = false;
+        result_code = result_code | (allconverged ? CONVERGENCE_TEST_PASS : 0);
 
         interval_t h;
         vector<interval_t> dhdx(x.size());
+        vector<vector<interval_t>> d2hdx2(x.size(), vector<interval_t>(x.size()));
+
         objective_gradient(x, params, h, dhdx);
-        grad_pass = std::all_of(dhdx.begin(), dhdx.end(), [](interval_t ival)
+        bool grad_pass = std::all_of(dhdx.begin(), dhdx.end(), [](interval_t ival)
                                 { return boost::numeric::zero_in(ival); });
-        if (logging)
+        result_code = result_code | (grad_pass ? GRADIENT_TEST_PASS : GRADIENT_TEST_FAIL);
+
+        objective_hessian(x, params, h, d2hdx2);
+        if (is_positive_definite(d2hdx2))
         {
-            logger.log_gradient_test(tasknum, clock::now(), x, h, dhdx);
+            result_code = result_code | HESSIAN_POSITIVE_DEFINITE;
         }
-        // interval cannot contain a local minimum, since the derivative doesn't change sign.
-        // therefore we discard it.
-        if (!grad_pass)
+        else if (is_negative_definite(d2hdx2))
         {
-            if (logging)
-            {
-                logger.log_task_complete(tasknum, clock::now(), x, GRADIENT_TEST_FAIL);
-            }
-        }
-        else if (allconverged)
-        {
-            if (logging)
-            {
-                logger.log_task_complete(tasknum, clock::now(), x, CONVERGENCE_TEST_PASS | GRADIENT_TEST_PASS);
-            }
-            sresults.minima_intervals.push_back(x);
+            result_code = result_code | HESSIAN_NEGATIVE_DEFINITE;
         }
         else
         {
+            result_code = result_code | HESSIAN_MAYBE_INDEFINITE;
+        }
 
-            vector<vector<interval_t>> d2hdx2(x.size(), vector<interval_t>(x.size()));
-            objective_hessian(x, params, h, d2hdx2);
-            hess_spd = is_positive_definite(d2hdx2);
-            hess_npd = is_negative_definite(d2hdx2);
-            TestResultCode hess_res = hess_spd ? HESSIAN_POSITIVE_DEFINITE : (hess_npd ? HESSIAN_NEGATIVE_DEFINITE : HESSIAN_MAYBE_INDEFINITE);
+        logger.log_all_tests(tasknum, clock::now(), result_code, x, h, dhdx, d2hdx2, dims_converged);
+        if ((result_code & GRADIENT_TEST_FAIL) | (result_code & HESSIAN_NEGATIVE_DEFINITE))
+        {
+            // gradient test OR hessian test failed
             if (logging)
             {
-                logger.log_hessian_test(tasknum, clock::now(), hess_res, x, h, dhdx, d2hdx2);
+                logger.log_task_complete(tasknum, clock::now(), x, result_code);
             }
-            if (hess_spd) // hessian is SPD -> h(x) on interval is convex
+        }
+        else if (result_code & HESSIAN_POSITIVE_DEFINITE) 
+        {
+            // hessian test passed!
+            // hessian is SPD -> h(x) on interval is convex
+            auto x_res = narrow_via_bisection(x, dims_converged, params);
+            if (logging)
             {
-                auto x_res = narrow_via_bisection(x, dims_converged, params);
-                if (logging)
-                {
-                    logger.log_task_complete(tasknum, clock::now(), x, CONVERGENCE_TEST_PASS | HESSIAN_POSITIVE_DEFINITE);
-                }
-                sresults.minima_intervals.push_back(x_res);
+                logger.log_task_complete(tasknum, clock::now(), x, CONVERGENCE_TEST_PASS | result_code);
             }
-            else if (hess_npd) // hessian is NPD -> h(x) on interval is concave
+            sresults.minima_intervals.push_back(x_res);
+        }else if (result_code & CONVERGENCE_TEST_PASS){
+            fmt::print(std::cout, "  Strange behavior in task {:d}, result code is {:d}.\n", tasknum, result_code);
+            fmt::print(std::cout, "  Gradient test FAIL, hessian test INCONCLUSIVE, convergence PASS\n");
+            fmt::print(std::cout, "  DISCARDING INTERVAL\n");
+            if (logging)
             {
-                if (logging)
-                {
-                    logger.log_task_complete(tasknum, clock::now(), x, HESSIAN_NEGATIVE_DEFINITE);
-                }
+                logger.log_task_complete(tasknum, clock::now(), x, result_code);
             }
-            else // second derivative test is inconclusive... cut up the interval
+        }
+        else 
+        {
+            // second derivative test is inconclusive...
+            // interval contains a change of sign in the gradient, but it is not locally convex.
+            // therefore, we choose to bisect the interval and continue the search.
+            auto ivals = bisect_interval(x, dims_converged);
+            for (auto &ival : ivals)
             {
-                // interval contains a change of sign in the gradient, but it is not locally convex.
-                // therefore, we choose to bisect the interval and continue the search.
-                auto ivals = bisect_interval(x, dims_converged);
-                for (auto &ival : ivals)
-                {
-                    workq.push(ival);
-                }
-                if (logging)
-                {
-                    logger.log_task_complete(tasknum, clock::now(), x, HESSIAN_MAYBE_INDEFINITE);
-                }
+                workq.push(ival);
+            }
+            if (logging)
+            {
+                logger.log_task_complete(tasknum, clock::now(), x, result_code);
             }
         }
     }

@@ -36,7 +36,7 @@ int main(int argc, char **argv)
     BNBSolverSettings<double> settings;
     settings.TOL_X = 1.0e-4;
     settings.TOL_Y = 1.0e-4;
-    settings.MAXITER = 10000;
+    settings.MAXITER = 1000;
     settings.MAX_REFINE_ITER = 20;
 
     using solver_t = LocalOptimaBNBSolver<decltype(h),
@@ -57,9 +57,9 @@ int main(int argc, char **argv)
     solver_t solver(h, settings);
     auto results = solver.find_minima(y0, p, true);
     fmt::print("Found {} minima:\n", results.minima_intervals.size());
-    for (auto &ival : results.minima_intervals)
-    {
-        fmt::print("f({::.4e}, {::.2e}) = {:.4e}\n", ival, params1, obj1(ival, p));
-    }
+    // for (auto &ival : results.minima_intervals)
+    // {
+    //     fmt::print("f({::.4e}, {::.2e}) = {:.4e}\n", ival, p, h(ival, p));
+    // }
     return 0;
 }
