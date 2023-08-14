@@ -8,7 +8,11 @@ using std::vector;
 #include "boost/numeric/interval.hpp"
 
 /**
- * @brief Get submatrix of square matrix A formed by removing columns p and q
+ * @brief Get submatrix of square matrix A formed by removing column p and row q
+ * @param[in] A Square matrix to extract a submatrix from
+ * @param[in] p
+ * @param[in] q
+ * @return Submatrix A_pq. 
  */
 template <typename T>
 vector<vector<T>> submatrix(vector<vector<T>> const &A, const size_t p, const size_t q)
@@ -47,7 +51,7 @@ T determinant(vector<vector<T>> A)
 {
     // assert that A has size and is square
     assert(A.size() > 0 && A.size() == A[0].size());
-    T det;
+    T det{0};
     // write out A.size() = 1, 2, 3 explicitly to save on the creation of 2x2 and 3x3 minors
     if (A.size() == 1)
     {
@@ -66,7 +70,6 @@ T determinant(vector<vector<T>> A)
     else
     {
         // det A = \sum_{i=1}^N -1^(i-1) * det (i,1 submatrix of A)
-        det = 0;
         // even-numbered minors
         for (size_t i = 0; i < A.size(); i += 2)
         {

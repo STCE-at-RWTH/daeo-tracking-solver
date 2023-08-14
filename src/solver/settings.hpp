@@ -48,6 +48,7 @@ enum BNBEventCodes
     CONVERGENCE_TEST,
     GRADIENT_TEST,
     HESSIAN_TEST,
+    ALL_TESTS
 };
 
 auto format_as(BNBEventCodes evc) { return fmt::underlying(evc); }
@@ -176,6 +177,23 @@ public:
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, dhdx);
         fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, ddhdxx);
         fmt::print(outs[threadid], "None\n");
+    }
+
+    template <typename T>
+    void log_all_tests(size_t tasknum, sys_time_point_t time,
+                          size_t combined_results,
+                          vector<T> const &x, T const &h,
+                          vector<T> const &dhdx, vector<vector<T>> &ddhdxx,
+                          vector<bool> const & convergence,
+                          size_t threadid = 0)
+    {
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        fmt::print(outs[threadid], LOG_EID_EXTRA, ALL_TESTS, combined_results);
+        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
+        fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
+        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, dhdx);
+        fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, ddhdxx);
+        fmt::print(outs[threadid], "{::d}\n", convergence);
     }
 };
 
