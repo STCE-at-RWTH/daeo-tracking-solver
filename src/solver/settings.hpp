@@ -119,12 +119,11 @@ public:
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
     }
 
-    template <typename T>
-    void log_computation_end(size_t tasknum, sys_time_point_t time, vector<T> const &domain, size_t n_results, size_t threadid = 0)
+    void log_computation_end(size_t tasknum, sys_time_point_t time, size_t n_results, size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
-        fmt::print(outs[threadid], LOG_EID_EXTRA, 1, n_results);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, domain);
+        fmt::print(outs[threadid], LOG_EID_EXTRA, COMPUTATION_COMPLETE, n_results);
+        fmt::print(outs[threadid], "None\t");
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
     }
 

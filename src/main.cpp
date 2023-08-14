@@ -22,15 +22,15 @@ int main(int argc, char **argv)
     *    with embedded global optimization criteria [Deussen, Hüser, Naumann]
     *
     */
-    double x0 = 1.;
+    vector<double> x0{1.0};
     auto dx = [](const auto &t, const auto &x, const auto &y, const auto &p) -> auto
     {
-        return -(p[0] + y)*x;
+        return -(p[0] + y[0])*x[0];
     };
 
     auto h = [](const auto &t, const auto &x, const auto& y, const auto &p) -> auto
     {
-        return pow(p[1] - pow(y, 2), 2)-(x-p[2])*sin(y*p[3]);
+        return pow(p[1] - pow(y[0], 2), 2)-(x[0]-p[2])*sin(y[0]*p[3]);
     };
 
     BNBSolverSettings<double> settings;
@@ -55,11 +55,12 @@ int main(int argc, char **argv)
     };
 
     solver_t solver(h, settings);
-    auto results = solver.find_minima(y0, p, true);
+    solver.set_search_domain(y0);
+    auto results = solver.find_minima_at(0, x0, p, true);
     fmt::print("Found {} minima:\n", results.minima_intervals.size());
-    // for (auto &ival : results.minima_intervals)
-    // {
-    //     fmt::print("f({::.4e}, {::.2e}) = {:.4e}\n", ival, p, h(ival, p));
-    // }
+    for (auto &y_argmin : results.minima_intervals)
+    {
+        fmt::print("f(0, {::.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
+    }
     return 0;
 }
