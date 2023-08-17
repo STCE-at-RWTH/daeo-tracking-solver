@@ -6,6 +6,7 @@
 #include "boost/numeric/interval.hpp"
 #include "solver/settings.hpp"
 #include "solver/local_optima_solver.hpp"
+#include "solver/daeo_solver.hpp"
 
 using std::vector;
 using namespace std::numbers;

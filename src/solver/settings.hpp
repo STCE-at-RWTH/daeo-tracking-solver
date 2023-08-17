@@ -39,8 +39,19 @@ struct BNBSolverSettings
     std::size_t MAX_REFINE_ITER = 4;
 };
 
-enum BNBEventCodes
+template <typename NUMERIC_T>
+struct DAEOSolverSettings
 {
+    NUMERIC_T TOL_T;
+    NUMERIC_T dt;
+
+    NUMERIC_T y0_min;
+    NUMERIC_T y0_max;
+
+    size_t SEARCH_FREQUENCY = 1;
+};
+
+enum BNBEventCodes {
     COMPUTATION_BEGIN,
     COMPUTATION_COMPLETE,
     TASK_BEGIN,
@@ -130,7 +141,7 @@ public:
     template <typename T>
     void log_task_begin(size_t tasknum, sys_time_point_t time, vector<T> const &ival, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_BEGIN, 0);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, ival);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
@@ -139,7 +150,7 @@ public:
     template <typename T>
     void log_task_complete(size_t tasknum, sys_time_point_t time, vector<T> const &ival, size_t reason, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_COMPLETE, reason);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, ival);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
@@ -147,7 +158,7 @@ public:
 
     void log_convergence_test(size_t tasknum, sys_time_point_t time, vector<bool> const &convergence, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, CONVERGENCE_TEST, 0);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\t{::d}\n", convergence);
     }
@@ -157,7 +168,7 @@ public:
                            vector<T> const &x, T const &h,
                            vector<T> const &dhdx, size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, GRADIENT_TEST, 0);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
@@ -172,7 +183,7 @@ public:
                           vector<T> const &dhdx, vector<vector<T>> &ddhdxx,
                           size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time-m_logging_start);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, HESSIAN_TEST, testres);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
@@ -183,13 +194,13 @@ public:
 
     template <typename T>
     void log_all_tests(size_t tasknum, sys_time_point_t time,
-                          size_t combined_results,
-                          vector<T> const &x, T const &h,
-                          vector<T> const &dhdx, vector<vector<T>> &ddhdxx,
-                          vector<bool> const & convergence,
-                          size_t threadid = 0)
+                       size_t combined_results,
+                       vector<T> const &x, T const &h,
+                       vector<T> const &dhdx, vector<vector<T>> &ddhdxx,
+                       vector<bool> const &convergence,
+                       size_t threadid = 0)
     {
-        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time);
+        fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, ALL_TESTS, combined_results);
         fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);

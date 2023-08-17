@@ -38,13 +38,7 @@ struct BNBSolverResults
      */
     NUMERIC_T optima_upper_bound = std::numeric_limits<NUMERIC_T>::max();
 
-    /**
-     * @brief Estimate for the Lipschitz constant in x. abs(d/dy) <
-     */
-    NUMERIC_T K1_dx_estimate = (NUMERIC_T)0;
-
     vector<vector<INTERVAL_T>> minima_intervals;
-    NUMERIC_T dh_dh_supremum = 0;
 };
 
 /**
