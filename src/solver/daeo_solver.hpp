@@ -61,21 +61,29 @@ public:
 
     void solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end, NUMERIC_T const dt0, NUMERIC_T const x0)
     {
+        // get inital yi and y*
         auto minimizer_res = m_optimizer.find_minima_at(m_t, m_x, m_params);
-
-        NUMERIC_T h;
         NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
         NUMERIC_T y_star;
-
-        for (auto &y : minimizer_res.minima_intervals)
+        size_t i_star;
+        for (size_t i = 0; i<minimizer_res.minima_intervals.size(); i++)
         {
-            h = m_objective(m_t, m_x, median(y), m_params);
+            NUMERIC_T h = m_objective.value(m_t, m_x, median(minimizer_res.minima_intervals[i]), m_params);
             if (h < h_star)
             {
                 h_star = h;
-                y_star = y;
+                y_star = median(minimizer_res.minima_intervals[i]);
+                i_star = i;
             }
         }
+
+        // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
+        // even if they did, would it really matter? since we don't do any implicit function silliness
+        // we probably wouldn't even be able to tell if this did happen
+
+        // it may be beneficial to periodically check all of the y_is and see if they're close to each other before and after
+        // solving for the values at the next time step.
+        // This would trigger a search for minima of h(x, y) again, since we may have "lost" one
     }
 
     /*
@@ -150,26 +158,34 @@ public:
         using lhs_t = Eigen::Matrix<NUMERIC_T, Eigen::Dynamic, Eigen::Dynamic>;
         using rhs_t = Eigen::Matrix<NUMERIC_T, Eigen::Dynamic, 1>;
 
-        while(iter < m_settings.MAX_NEWTON_ITERATIONS){ 
+        while (iter < m_settings.MAX_NEWTON_ITERATIONS)
+        {
             g_temp = G(t, dt, x, x_next, y, y_next, p);
             delg_temp = delG(t + dt, dt, x_next, y_next, p);
-            
+
             // BAD
             // TODO use Eigen everywhere!
             lhs_t lhs(delg_temp.size(), delg_temp.size());
             rhs_t rhs(g_temp.size());
-            for(size_t i = 0; i<delg_temp.size(); i++){
+            for (size_t i = 0; i < delg_temp.size(); i++)
+            {
                 rhs(i) = g_temp[i];
-                for(size_t j = 0; j<delg_temp.size(); j++){
-                    lhs(i,j) = delg_temp[i][j];
+                for (size_t j = 0; j < delg_temp.size(); j++)
+                {
+                    lhs(i, j) = delg_temp[i][j];
                 }
             }
             auto diff = lhs.colPivHouseholderQr().solve(rhs);
             x_next = x_next - diff(0);
-            for(size_t i = 1; i<g_temp.size(); i++){
-                y_next[i-1] = y_next[i-1] - diff(i);
+            for (size_t i = 1; i < g_temp.size(); i++)
+            {
+                y_next[i - 1] = y_next[i - 1] - diff(i);
             }
-            
+            if (diff.norm() < m_settings.NEWTON_EPS)
+            {
+                break;
+            }
+
             iter++;
         }
     }
