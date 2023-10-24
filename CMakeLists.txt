@@ -44,8 +44,8 @@ add_compile_definitions(
 )
 
 
-set(bnb_solver_headers src/solver/settings.hpp src/solver/local_optima_solver.hpp)
-set(daeo_solver_headers src/solver/daeo_solver.hpp src/solver/grids.hpp)
+set(bnb_solver_headers src/solver/settings.hpp src/solver/local_optima_solver.hpp src/solver/objective.hpp)
+set(daeo_solver_headers src/solver/daeo_solver.hpp src/solver/grids.hpp src/solver/newton_solver.hpp src/solver/objective.hpp)
 
 get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)
 

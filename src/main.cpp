@@ -7,6 +7,7 @@
 #include "solver/settings.hpp"
 #include "solver/local_optima_solver.hpp"
 #include "solver/daeo_solver.hpp"
+#include "solver/objective.hpp"
 
 using std::vector;
 using namespace std::numbers;
@@ -23,15 +24,15 @@ int main(int argc, char **argv)
     *    with embedded global optimization criteria [Deussen, Hüser, Naumann]
     *
     */
-    vector<double> x0{1.0};
+    double x0{1.0};
     auto dx = [](const auto &t, const auto &x, const auto &y, const auto &p) -> auto
     {
         return -(p[0] + y[0])*x[0];
     };
 
-    auto h = [](const auto &t, const auto &x, const auto& y, const auto &p) -> auto
+    auto h = [](const auto t, const auto x, const auto& y, const auto &p) -> auto
     {
-        return pow(p[1] - pow(y[0], 2), 2)-(x[0]-p[2])*sin(y[0]*p[3]);
+        return pow(p[1] - pow(y[0], 2), 2)-(x-p[2])*sin(y[0]*p[3]);
     };
 
     BNBSolverSettings<double> settings;
@@ -61,7 +62,9 @@ int main(int argc, char **argv)
     fmt::print("Found {} minima:\n", results.minima_intervals.size());
     for (auto &y_argmin : results.minima_intervals)
     {
-        fmt::print("f(0, {::.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
+        fmt::print("f(0, {:.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
     }
+
+    DAEOWrappedFunction h_obj(h);
     return 0;
 }
