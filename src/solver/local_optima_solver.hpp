@@ -288,50 +288,6 @@ private:
         return res;
     }
 
-    // /**
-    //  * @brief Computes the gradient of the objective function using @c dco/c++ adjoint mode.
-    //  * @param[in] t Value of t at at the current time step.
-    //  * @param[in] x Value of x at the current time step.
-    //  * @param[in] y Proposed
-    //  * @param[in] params
-    //  * @param[inout] h
-    //  * @param[inout] dhdy
-    //  *
-    //  * @details
-    //  */
-    // template<typename AT>
-    // void objective_gradient(NUMERIC_T t,
-    //                         NUMERIC_T x,
-    //                         vector<AT> const &y,
-    //                         vector<NUMERIC_T> const &params,
-    //                         AT &h,
-    //                         vector<AT> &dhdy)
-    // {
-    //     // define dco types and get a pointer to the tape
-    //     // unsure how to use ga1sm to expand this to multithreaded programs
-    //     using dco_mode_t = dco::ga1s<AT>;
-    //     using active_t = dco_mode_t::type;
-
-    //     dco::smart_tape_ptr_t<dco_mode_t> tape;
-    //     tape->reset();
-    //     // create active variables and allocate active output variables
-    //     vector<active_t> y_active(y.size());
-    //     dco::value(y_active) = y;
-    //     active_t h_active;
-    //     tape->register_variable(y_active.begin(), y_active.end());
-    //     // write and interpret the tape
-    //     h_active = m_objective(t, x, y_active, params);
-    //     dco::derivative(h_active) = 1;
-    //     tape->interpret_adjoint();
-
-    //     // copy values from active variables to output variables
-    //     h = dco::value(h_active);
-    //     for (size_t i = 0; i < y.size(); i++)
-    //     {
-    //         dhdy[i] = dco::derivative(y_active[i]);
-    //     }
-    // }
-
     /**
      *
      */
@@ -381,54 +337,6 @@ private:
         }
         return y;
     }
-
-    // /**
-    //  * @brief Computes the hessian of the objective function using dco/c++ tangent mode over adjoint mode.
-    //  * @param[in] t
-    //  * @param[in] x
-    //  * @param[in] y
-    //  * @param[in] params
-    //  * @param[inout] h
-    //  * @param[inout] d2hdx2
-    //  *
-    //  * @details
-    //  */
-    // void objective_hessian(NUMERIC_T t,
-    //                        NUMERIC_T x,
-    //                        vector<interval_t> const &y,
-    //                        vector<NUMERIC_T> const &params,
-    //                        interval_t &h,
-    //                        vector<vector<interval_t>> &d2hdy2)
-    // {
-    //     using dco_tangent_t = dco::gt1s<interval_t>::type;
-    //     using dco_mode_t = dco::ga1s<dco_tangent_t>;
-    //     using active_t = dco_mode_t::type;
-    //     dco::smart_tape_ptr_t<dco_mode_t> tape;
-
-    //     const size_t ndims = y.size();
-    //     active_t h_active;
-    //     vector<active_t> y_active(ndims);
-    //     dco::passive_value(y_active) = y;
-    //     tape->register_variable(y_active.begin(), y_active.end());
-    //     auto start_position = tape->get_position();
-
-    //     for (size_t hrow = 0; hrow < ndims; hrow++)
-    //     {
-    //         dco::derivative(dco::value(y_active[hrow])) = 1; // wiggle x[hcol]
-    //         h_active = m_objective(t, x, y_active, params);
-    //         dco::value(dco::derivative(h_active)) = 1;            // set sensitivity to wobbles in h to 1
-    //         tape->interpret_adjoint_and_reset_to(start_position); // interpret and rewind the tape
-    //         for (size_t hcol = 0; hcol < ndims; hcol++)
-    //         {
-    //             d2hdy2[hrow][hcol] = dco::derivative(dco::derivative(y_active[hcol]));
-    //             // reset any accumulated values
-    //             dco::derivative(dco::derivative(y_active[hcol])) = 0;
-    //             dco::value(dco::derivative(y_active[hcol])) = 0;
-    //         }
-    //         dco::derivative(dco::value(y_active[hrow])) = 0; // no longer wiggling x[hcol]
-    //     }
-    //     h = dco::passive_value(h_active);
-    // }
 };
 
 #endif // header guard
