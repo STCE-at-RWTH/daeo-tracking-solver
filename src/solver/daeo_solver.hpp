@@ -5,7 +5,9 @@
 #ifndef _DAEO_SOLVER_HPP
 #define _DAEO_SOLVER_HPP
 
+#include <algorithm>
 #include <limits>
+#include <tuple>
 #include <vector>
 
 #include "boost/numeric/interval.hpp"
@@ -59,23 +61,45 @@ public:
         return m_x;
     }
 
-    void solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end, NUMERIC_T const dt0, NUMERIC_T const x0)
+    template<typename IT>
+    vector<vector<NUMERIC_T>> median_helper(BNBSolverResults<NUMERIC_T, IT> const &b)
     {
-        // get inital yi and y*
-        auto minimizer_res = m_optimizer.find_minima_at(m_t, m_x, m_params);
-        NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
-        NUMERIC_T y_star;
-        size_t i_star;
-        for (size_t i = 0; i<minimizer_res.minima_intervals.size(); i++)
+        vector<vector<NUMERIC_T>> out;
+        for (auto &y_i : b.minima_intervals)
         {
-            NUMERIC_T h = m_objective.value(m_t, m_x, median(minimizer_res.minima_intervals[i]), m_params);
-            if (h < h_star)
-            {
+            out.emplace_back(y_i.size());
+            std::transform(y_i.begin(), y_i.end(), out.back().begin(),
+                           [](auto it)
+                           { return median(it); });
+        }
+        return out;
+    }
+
+    template<typename IT>
+    std::tuple<NUMERIC_T, vector<NUMERIC_T>, size_t> find_optimum_in_results(BNBSolverResults<NUMERIC_T, IT> const &b,
+                                                                             NUMERIC_T const t, NUMERIC_T const x,
+                                                                             vector<NUMERIC_T> const &params)
+    {
+        vector<vector<NUMERIC_T>> y_medians(median_helper(b));
+        NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
+        size_t i_star;
+        for (size_t i = 0; i < y_medians.size(); i++)
+        {
+            NUMERIC_T h = m_objective.value(t, x, y_medians[i], params);
+            if (h<h_star){
                 h_star = h;
-                y_star = median(minimizer_res.minima_intervals[i]);
                 i_star = i;
             }
         }
+        return {h_star, y_medians[i_star], i_star};
+    }
+
+    void solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end, NUMERIC_T const dt0, NUMERIC_T const x0)
+    {
+        NUMERIC_T t = t0;
+        fmt::println("Starting to solve DAEO at t={.4e} with x={.4e}", t, x0);
+        auto bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
+        fmt::println("BNB optimizer yields candidates for y at {::.4e}", bnb_results_0.minima_intervals);
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
         // even if they did, would it really matter? since we don't do any implicit function silliness
@@ -188,6 +212,8 @@ public:
 
             iter++;
         }
+
+        return {x_next, y_next};
     }
 };
 

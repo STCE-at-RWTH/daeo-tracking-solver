@@ -35,17 +35,22 @@ int main(int argc, char **argv)
         return pow(p[1] - pow(y[0], 2), 2)-(x-p[2])*sin(y[0]*p[3]);
     };
 
-    BNBSolverSettings<double> settings;
-    settings.TOL_X = 1.0e-4;
-    settings.TOL_Y = 1.0e-4;
-    settings.MAXITER = 1000;
-    settings.MAX_REFINE_ITER = 20;
+    BNBSolverSettings<double> bnb_settings;
+    bnb_settings.TOL_X = 1.0e-4;
+    bnb_settings.TOL_Y = 1.0e-4;
+    bnb_settings.MAXITER = 1000;
+    bnb_settings.MAX_REFINE_ITER = 20;
 
-    using solver_t = LocalOptimaBNBSolver<decltype(h),
+    DAEOSolverSettings<double> solver_settings;
+    solver_settings.TOL_T = 1.0e-6;
+    solver_settings.y0_min = -8.0;
+    solver_settings.y0_max = 12.0;
+
+    using optimizer_t = LocalOptimaBNBSolver<decltype(h),
                                           double,
                                           suggested_solver_policies<double>>;
 
-    vector<solver_t::interval_t> y0{
+    vector<optimizer_t::interval_t> y0{
         {-8.0, 12.0}
     };
 
@@ -56,15 +61,15 @@ int main(int argc, char **argv)
         pi/2
     };
 
-    solver_t solver(h, settings);
-    solver.set_search_domain(y0);
-    auto results = solver.find_minima_at(0, x0, p, true);
+    optimizer_t optimizer(h, bnb_settings);
+    optimizer.set_search_domain(y0);
+    auto results = optimizer.find_minima_at(0, x0, p, true);
     fmt::print("Found {} minima:\n", results.minima_intervals.size());
     for (auto &y_argmin : results.minima_intervals)
     {
         fmt::print("f(0, {:.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
     }
 
-    DAEOWrappedFunction h_obj(h);
+    
     return 0;
 }

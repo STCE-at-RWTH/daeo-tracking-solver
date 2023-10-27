@@ -43,7 +43,6 @@ template <typename NUMERIC_T>
 struct DAEOSolverSettings
 {
     NUMERIC_T TOL_T;
-    NUMERIC_T dt;
 
     NUMERIC_T y0_min;
     NUMERIC_T y0_max;
