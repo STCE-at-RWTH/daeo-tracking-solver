@@ -30,38 +30,23 @@ template <typename XPRIME, typename OBJECTIVE, typename NUMERIC_T>
 class DAEOTrackingSolver
 {
     size_t m_stepnum = 0;
-    NUMERIC_T m_t = 0;
-
-    vector<NUMERIC_T> const m_x0;
-    vector<NUMERIC_T> m_x;
-    vector<NUMERIC_T> const m_params;
 
     DAEOWrappedFunction<XPRIME> const m_xprime;
     DAEOWrappedFunction<OBJECTIVE> const m_objective;
+    LocalOptimaBNBSolver<OBJECTIVE, NUMERIC_T, suggested_solver_policies<NUMERIC_T>> m_optimizer;
     DAEOSolverSettings<NUMERIC_T> m_settings;
 
-    LocalOptimaBNBSolver<OBJECTIVE, NUMERIC_T, suggested_solver_policies<NUMERIC_T>> m_optimizer;
-
 public:
-    DAEOTrackingSolver(vector<NUMERIC_T> &t_x0, XPRIME const &t_xprime, OBJECTIVE const &t_objective, vector<NUMERIC_T> const &t_params,
-                       BNBSolverSettings<NUMERIC_T> &t_opt_settings, DAEOSolverSettings<NUMERIC_T> &t_global_settings)
-        : m_x0(t_x0), m_xprime(t_xprime), m_objective(t_objective),
-          m_params(t_params), m_optimizer(t_objective, t_opt_settings), m_settings(t_global_settings)
+    DAEOTrackingSolver(XPRIME const &t_xprime, OBJECTIVE const &t_objective,
+                       BNBSolverSettings<NUMERIC_T> &t_opt_settings,
+                       DAEOSolverSettings<NUMERIC_T> &t_global_settings)
+        : m_xprime(t_xprime), m_objective(t_objective),
+          m_optimizer(t_objective, t_opt_settings), m_settings(t_global_settings)
     {
         m_optimizer.set_search_domain({{m_settings.y0_min, m_settings.y0_max}});
     }
 
-    inline NUMERIC_T t()
-    {
-        return m_t;
-    }
-
-    inline vector<NUMERIC_T> x()
-    {
-        return m_x;
-    }
-
-    template<typename IT>
+    template <typename IT>
     vector<vector<NUMERIC_T>> median_helper(BNBSolverResults<NUMERIC_T, IT> const &b)
     {
         vector<vector<NUMERIC_T>> out;
@@ -75,7 +60,7 @@ public:
         return out;
     }
 
-    template<typename IT>
+    template <typename IT>
     std::tuple<NUMERIC_T, vector<NUMERIC_T>, size_t> find_optimum_in_results(BNBSolverResults<NUMERIC_T, IT> const &b,
                                                                              NUMERIC_T const t, NUMERIC_T const x,
                                                                              vector<NUMERIC_T> const &params)
@@ -86,7 +71,8 @@ public:
         for (size_t i = 0; i < y_medians.size(); i++)
         {
             NUMERIC_T h = m_objective.value(t, x, y_medians[i], params);
-            if (h<h_star){
+            if (h < h_star)
+            {
                 h_star = h;
                 i_star = i;
             }
@@ -94,12 +80,24 @@ public:
         return {h_star, y_medians[i_star], i_star};
     }
 
-    void solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end, NUMERIC_T const dt0, NUMERIC_T const x0)
+    void solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
+                    NUMERIC_T const dt0, NUMERIC_T const x0,
+                    vector<NUMERIC_T> const &params)
     {
         NUMERIC_T t = t0;
-        fmt::println("Starting to solve DAEO at t={.4e} with x={.4e}", t, x0);
+        NUMERIC_T x = x0;
+        
+        NUMERIC_T h_star;
+        vector<NUMERIC_T> y_star;
+        size_t i_star;
+        
+        fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
         auto bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
-        fmt::println("BNB optimizer yields candidates for y at {::.4e}", bnb_results_0.minima_intervals);
+        fmt::println("BNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
+        std::tie(h_star, y_star, i_star) = find_optimum_in_results(bnb_results_0, t, x, params);
+        fmt::println("Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}", t, x, y_star, params, h_star);
+
+        auto [x_next, y_next] = solve_G_is_zero(t, dt0, x, y_star, params);
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
         // even if they did, would it really matter? since we don't do any implicit function silliness
@@ -124,7 +122,7 @@ public:
 
     vector<NUMERIC_T> G(NUMERIC_T const t, NUMERIC_T const dt,
                         NUMERIC_T const x0, NUMERIC_T const x1,
-                        vector<NUMERIC_T> const &y0, vector<NUMERIC_T> const &y1, vector<NUMERIC_T> &p)
+                        vector<NUMERIC_T> const &y0, vector<NUMERIC_T> const &y1, vector<NUMERIC_T> const &p)
     {
         NUMERIC_T t1 = t + dt;
         vector<NUMERIC_T> result(1 + y0.size());
@@ -146,14 +144,14 @@ public:
      * @param[in] p
      */
     vector<vector<NUMERIC_T>> delG(NUMERIC_T const t, NUMERIC_T const dt,
-                                   NUMERIC_T const x, vector<NUMERIC_T> const &y, vector<NUMERIC_T> &p)
+                                   NUMERIC_T const x, vector<NUMERIC_T> const &y, vector<NUMERIC_T> const &p)
     {
         size_t ndims = 1 + y.size();
         vector<vector<NUMERIC_T>> result(ndims, vector<NUMERIC_T>(ndims));
         result[0][0] = -1 + dt / 2 * m_xprime.ddx(t, x, y, p);
-        vector<NUMERIC_T> A1(m_objective.d2dxdy(t, x, y));
+        vector<NUMERIC_T> A1(m_objective.d2dxdy(t, x, y, p));
         vector<NUMERIC_T> A2(m_xprime.ddy(t, x, y, p));
-        vector<vector<NUMERIC_T>> B(m_objective.d2dy2());
+        vector<vector<NUMERIC_T>> B(m_objective.d2dy2(t, x, y, p));
         for (size_t j = 1; j < ndims; j++)
         {
             result[0][j] = A2[j - 1];

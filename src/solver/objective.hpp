@@ -107,7 +107,7 @@ public:
     }
 
     template <typename AT, typename PT>
-    vector<AT> d2dxdy(PT const t, AT const x, vector<AT> const &y, vector<PT> const &p)
+    vector<AT> d2dxdy(PT const t, AT const x, vector<AT> const &y, vector<PT> const &p) const
     {
         using dco_tangent_t = dco::gt1s<AT>::type;
         using dco_mode_t = dco::ga1s<dco_tangent_t>;
@@ -119,14 +119,15 @@ public:
 
         dco::passive_value(y_active) = y;
         dco::passive_value(x_active) = x;
-        tape->register_variable(y_active);
         tape->register_variable(x_active);
+        tape->register_variable(y_active);
+        
         vector<AT> ddxddy(y.size());
 
         dco::derivative(dco::value(x_active)) = 1; // wiggle x
         h_active = m_fn(t, x_active, y_active, p); // compute h
         dco::value(dco::derivative(h_active)) = 1; // sensitivity to h is 1
-        tape->intepret_adjoint();
+        tape->interpret_adjoint();
         for (size_t i = 0; i < y.size(); i++)
         {
             ddxddy[i] = dco::derivative(dco::derivative(y_active)); // harvest d2dxdy

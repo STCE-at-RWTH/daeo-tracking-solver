@@ -93,14 +93,6 @@ public:
         m_workq.push(y);
     }
 
-    void set_search_domain(vector<vector<interval_t>> ys)
-    {
-        for (auto &y : ys)
-        {
-            m_workq.push(y);
-        }
-    }
-
     /**
      * @brief Find minima in @c y of @c h(t,x,y;p) using the set search domain.
      * @param[in] t
