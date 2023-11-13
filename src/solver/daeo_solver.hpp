@@ -93,10 +93,10 @@ public:
         
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
         auto bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
-        fmt::println("BNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
+        fmt::println("\nBNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
         std::tie(h_star, y_star, i_star) = find_optimum_in_results(bnb_results_0, t, x, params);
-        fmt::println("Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}", t, x, y_star, params, h_star);
-
+        fmt::println("Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
+        fmt::println("G is {::.4e}", G(t, dt0, x, x, y_star, y_star, params));
         auto [x_next, y_next] = solve_G_is_zero(t, dt0, x, y_star, params);
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
@@ -189,6 +189,7 @@ public:
             // TODO use Eigen everywhere!
             lhs_t lhs(delg_temp.size(), delg_temp.size());
             rhs_t rhs(g_temp.size());
+            
             for (size_t i = 0; i < delg_temp.size(); i++)
             {
                 rhs(i) = g_temp[i];
