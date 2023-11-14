@@ -18,6 +18,9 @@ concept IsObjective = requires(FN f, NUMERIC_T t, NUMERIC_T x, vector<NUMERIC_T>
     } -> std::convertible_to<NUMERIC_T>;
 };
 
+/**
+ * @brief Wraps a function 
+*/
 template <typename FN>
 class DAEOWrappedFunction
 {
@@ -41,7 +44,6 @@ public:
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
         tape->reset();
-
         // define active inputs
         vector<active_t> y_active(y.size());
         dco::value(y_active) = y;
@@ -51,11 +53,9 @@ public:
         tape->register_output_variable(h_active);
         dco::derivative(h_active) = 1;
         tape->interpret_adjoint();
+        // harvest derivative
         std::vector<AT> dhdy(y.size());
-        for (size_t i = 0; i < y.size(); i++)
-        {
-            dhdy[i] = dco::derivative(y_active[i]);
-        }
+        dhdy = dco::derivative(y_active);
         return dhdy;
     }
 
@@ -116,18 +116,17 @@ public:
         active_t h_active;
         vector<active_t> y_active(y.size());
         active_t x_active;
-
+        // set values and register variables
         dco::passive_value(y_active) = y;
         dco::passive_value(x_active) = x;
         tape->register_variable(x_active);
         tape->register_variable(y_active);
-
-        vector<AT> ddxddy(y.size());
-
         dco::derivative(dco::value(x_active)) = 1; // wiggle x
         h_active = m_fn(t, x_active, y_active, p); // compute h
         dco::value(dco::derivative(h_active)) = 1; // sensitivity to h is 1
         tape->interpret_adjoint();
+        // harvest derivative
+        vector<AT> ddxddy(y.size());
         ddxddy = dco::derivative(dco::derivative(y_active)); // harvest d2dxdy
         return ddxddy;
     }

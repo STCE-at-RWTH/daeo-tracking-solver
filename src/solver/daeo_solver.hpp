@@ -97,7 +97,10 @@ public:
         std::tie(h_star, y_star, i_star) = find_optimum_in_results(bnb_results_0, t, x, params);
         fmt::println("Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
         fmt::println("G is {::.4e}", G(t, dt0, x, x, y_star, y_star, params));
+        auto dG = delG(t, dt0, x, y_star, params);
+        fmt::println("delG is {:::.4e}", dG);
         auto [x_next, y_next] = solve_G_is_zero(t, dt0, x, y_star, params);
+        fmt::println("x_next is {:.4e}, y_next is {::.4e}", x_next, y_next);
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
         // even if they did, would it really matter? since we don't do any implicit function silliness
@@ -178,7 +181,7 @@ public:
         vector<vector<NUMERIC_T>> delg_temp;
 
         using lhs_t = Eigen::Matrix<NUMERIC_T, Eigen::Dynamic, Eigen::Dynamic>;
-        using rhs_t = Eigen::Matrix<NUMERIC_T, Eigen::Dynamic, 1>;
+        using rhs_t = Eigen::Vector<NUMERIC_T, Eigen::Dynamic>;
 
         while (iter < m_settings.MAX_NEWTON_ITERATIONS)
         {
@@ -198,7 +201,9 @@ public:
                     lhs(i, j) = delg_temp[i][j];
                 }
             }
-            auto diff = lhs.colPivHouseholderQr().solve(rhs);
+            // fmt::println("LHS is {:d}x{:d}", lhs.rows(), lhs.cols());
+            // fmt::println("RHS is {:d}x{:d}", rhs.rows(), rhs.cols());
+            rhs_t diff = lhs.colPivHouseholderQr().solve(rhs);
             x_next = x_next - diff(0);
             for (size_t i = 1; i < g_temp.size(); i++)
             {
