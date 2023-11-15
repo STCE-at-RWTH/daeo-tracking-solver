@@ -86,11 +86,11 @@ public:
     {
         NUMERIC_T t = t0;
         NUMERIC_T x = x0;
-        
+
         NUMERIC_T h_star;
         vector<NUMERIC_T> y_star;
         size_t i_star;
-        
+
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
         auto bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
         fmt::println("\nBNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
@@ -120,9 +120,18 @@ public:
         The other equations are provided by dh/dyi = 0 at x_{k+1} and y_{k+1}
 
         from this structure we compute G and delG in blocks, since we have derivative routines available for f=x' and h
-
     */
 
+    /**
+     * @brief Compute G. We are searching for x1, y1 s.t. G(...) = 0.
+     * @param[in] t Start of the current time step
+     * @param[in] dt Current time step size
+     * @param[in] x0 Value of x at the beginning of the time step
+     * @param[in] x1 "Guess" value of x at t+dt
+     * @param[in] y0 Value of y at the beginning of the time step
+     * @param[in] y1 "Guess" value of y at t+dt
+     * @param[in] p Parameter vector.
+     */
     vector<NUMERIC_T> G(NUMERIC_T const t, NUMERIC_T const dt,
                         NUMERIC_T const x0, NUMERIC_T const x1,
                         vector<NUMERIC_T> const &y0, vector<NUMERIC_T> const &y1, vector<NUMERIC_T> const &p)
@@ -182,7 +191,6 @@ public:
 
         using lhs_t = Eigen::Matrix<NUMERIC_T, Eigen::Dynamic, Eigen::Dynamic>;
         using rhs_t = Eigen::Vector<NUMERIC_T, Eigen::Dynamic>;
-
         while (iter < m_settings.MAX_NEWTON_ITERATIONS)
         {
             g_temp = G(t, dt, x, x_next, y, y_next, p);
@@ -192,7 +200,7 @@ public:
             // TODO use Eigen everywhere!
             lhs_t lhs(delg_temp.size(), delg_temp.size());
             rhs_t rhs(g_temp.size());
-            
+
             for (size_t i = 0; i < delg_temp.size(); i++)
             {
                 rhs(i) = g_temp[i];
@@ -201,8 +209,6 @@ public:
                     lhs(i, j) = delg_temp[i][j];
                 }
             }
-            // fmt::println("LHS is {:d}x{:d}", lhs.rows(), lhs.cols());
-            // fmt::println("RHS is {:d}x{:d}", rhs.rows(), rhs.cols());
             rhs_t diff = lhs.colPivHouseholderQr().solve(rhs);
             x_next = x_next - diff(0);
             for (size_t i = 1; i < g_temp.size(); i++)
@@ -213,7 +219,6 @@ public:
             {
                 break;
             }
-
             iter++;
         }
 
