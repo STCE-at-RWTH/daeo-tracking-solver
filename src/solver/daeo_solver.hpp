@@ -46,18 +46,22 @@ public:
         m_optimizer.set_search_domain({{m_settings.y0_min, m_settings.y0_max}});
     }
 
-    template <typename IT>
-    vector<vector<NUMERIC_T>> median_helper(BNBSolverResults<NUMERIC_T, IT> const &b)
+    std::tuple<NUMERIC_T, vector<NUMERIC_T>, size_t> find_optimum(vector<vector<NUMERIC_T>> const &y,
+                                                                  NUMERIC_T const t, NUMERIC_T const x,
+                                                                  vector<NUMERIC_T> const &params)
     {
-        vector<vector<NUMERIC_T>> out;
-        for (auto &y_i : b.minima_intervals)
+        NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
+        size_t i_star;
+        for (size_t i = 0; i < y.size(); i++)
         {
-            out.emplace_back(y_i.size());
-            std::transform(y_i.begin(), y_i.end(), out.back().begin(),
-                           [](auto it)
-                           { return median(it); });
+            NUMERIC_T h = m_objective.value(t, x, y[i], params);
+            if (h < h_star)
+            {
+                h_star = h;
+                i_star = i;
+            }
         }
-        return out;
+        return {h_star, y[i_star], i_star};
     }
 
     template <typename IT>
@@ -65,19 +69,15 @@ public:
                                                                              NUMERIC_T const t, NUMERIC_T const x,
                                                                              vector<NUMERIC_T> const &params)
     {
-        vector<vector<NUMERIC_T>> y_medians(median_helper(b));
-        NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
-        size_t i_star;
-        for (size_t i = 0; i < y_medians.size(); i++)
+        vector<vector<NUMERIC_T>> y_medians;
+        for (auto &y_i : b.minima_intervals)
         {
-            NUMERIC_T h = m_objective.value(t, x, y_medians[i], params);
-            if (h < h_star)
-            {
-                h_star = h;
-                i_star = i;
-            }
+            y_medians.emplace_back(y_i.size());
+            std::transform(y_i.begin(), y_i.end(), y_medians.back().begin(),
+                           [](auto it)
+                           { return median(it); });
         }
-        return {h_star, y_medians[i_star], i_star};
+        return find_optimum(y_medians, t, x, params);
     }
 
     void solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
@@ -86,21 +86,28 @@ public:
     {
         NUMERIC_T t = t0;
         NUMERIC_T x = x0;
+        NUMERIC_T dt = dt0;
 
         NUMERIC_T h_star;
         vector<NUMERIC_T> y_star;
         size_t i_star;
 
+        // We need to take one time step to estimate dy*/dt
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
         auto bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
-        fmt::println("\nBNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
+        fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
         std::tie(h_star, y_star, i_star) = find_optimum_in_results(bnb_results_0, t, x, params);
-        fmt::println("Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
-        fmt::println("G is {::.4e}", G(t, dt0, x, x, y_star, y_star, params));
-        auto dG = delG(t, dt0, x, y_star, params);
-        fmt::println("delG is {:::.4e}", dG);
+        fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
         auto [x_next, y_next] = solve_G_is_zero(t, dt0, x, y_star, params);
-        fmt::println("x_next is {:.4e}, y_next is {::.4e}", x_next, y_next);
+        fmt::println("  x_next is {:.4e}, y_next is {::.4e}", x_next, y_next);
+
+        vector<NUMERIC_T> dydt_est(y_next.size());
+        for (size_t i = 0; i < y_next.size(); i++)
+        {
+            dydt_est[i] = (y_next[i] - y_star[i]) / dt;
+        }
+
+        fmt::println("  estimated dydt is {::.4e}", dydt_est);
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
         // even if they did, would it really matter? since we don't do any implicit function silliness
@@ -109,6 +116,22 @@ public:
         // it may be beneficial to periodically check all of the y_is and see if they're close to each other before and after
         // solving for the values at the next time step.
         // This would trigger a search for minima of h(x, y) again, since we may have "lost" one
+
+        size_t iter = 1;
+        size_t i_star_prev;
+        while (t < t_end)
+        {
+            i_star_prev = i_star;
+            std::tie(h_star, y_star, i_star) = find_optimum({y_next}, t, x_next, params);
+            if (i_star != i_star_prev){
+                fmt::println("  EVENT OCCURRED IN ITERATION {:d}", iter);
+            }
+            fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
+            std::tie(x_next, y_next) = solve_G_is_zero(t, dt, x_next, y_star, params);
+            fmt::println("  x_next is {:.4e}, y_next is {::.4e}", x_next, y_next);
+            t += dt;
+            iter++;
+        }
     }
 
     /*
@@ -120,6 +143,8 @@ public:
         The other equations are provided by dh/dyi = 0 at x_{k+1} and y_{k+1}
 
         from this structure we compute G and delG in blocks, since we have derivative routines available for f=x' and h
+
+        NOTE: these need to be extended to track ALL of the local optima y and not just the global.
     */
 
     /**
