@@ -240,6 +240,11 @@ int main(int argc, char *argv[])
 
     auto telm = tvec[0];
 
+    double_ival ival_1(2., 4.);
+    double val_1 = 3.0;
+    std::common_type<double_ival, double>::type val_2;
+    val_2 = ival_1 - val_1; 
+
     constexpr bool canfmtival = fmt::is_formattable<double_ival, char>::value;
     std::cout << std::boolalpha << canfmtival << "\n";
 
