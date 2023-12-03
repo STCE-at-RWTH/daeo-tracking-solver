@@ -35,6 +35,7 @@ add_compile_definitions(
   DCO_AUTO_SUPPORT
   DCO_INTEROPERABILITY_BOOST_INTERVAL
   DCO_DISABLE_AVX2_WARNING
+  DCO_EXT_NO_EIGEN
 )
 
 add_compile_definitions(
@@ -43,9 +44,9 @@ add_compile_definitions(
   GFX_PATH="${GFX_PATH}"
 )
 
-set(objective_headers src/solver/objective.hpp src/solver/eigen_objective.hpp)
+set(objective_headers src/solver/objective.hpp)
 set(bnb_solver_headers src/solver/settings.hpp src/solver/local_optima_solver.hpp)
-set(daeo_solver_headers src/solver/daeo_solver.hpp src/solver/grids.hpp)
+set(daeo_solver_headers src/solver/daeo_solver.hpp)
 
 get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)
 

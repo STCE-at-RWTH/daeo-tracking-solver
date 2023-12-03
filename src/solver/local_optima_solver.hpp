@@ -13,15 +13,16 @@
 #include <vector>
 
 #include "boost/numeric/interval.hpp"
+#include "Eigen/Dense" // must include Eigen BEFORE dco/c++
 #include "dco.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 
-#include "fmt_extensions/interval.hpp"
+
 #include "objective.hpp"
 #include "settings.hpp"
-#include "utils/io.hpp"
-#include "utils/matrices.hpp"
+#include "utils/fmt_extensions.hpp"
+#include "utils/sylvesters_criterion.hpp"
 
 using boost::numeric::median;
 using boost::numeric::width;
@@ -31,7 +32,7 @@ using std::vector;
  * @struct BNBSolverResults
  * @brief Bookkeeping for global information the solver needs to keep track of.
  */
-template <typename NUMERIC_T, typename INTERVAL_T>
+template <typename NUMERIC_T, typename INTERVAL_T, int YDIMS>
 struct BNBSolverResults
 {
     /**
@@ -39,7 +40,7 @@ struct BNBSolverResults
      */
     NUMERIC_T optima_upper_bound = std::numeric_limits<NUMERIC_T>::max();
 
-    vector<vector<INTERVAL_T>> minima_intervals;
+    vector<Eigen::Vector<INTERVAL_T, YDIMS>> minima_intervals;
 };
 
 /**
@@ -47,17 +48,44 @@ struct BNBSolverResults
  * @brief Finds regions containing local minima of h(t, x, y; p)
  * @tparam OBJECTIVE_T Type of the objective function.
  * @tparam NUMERIC_T Type of the parameters to h(t, x, y; p).
- * @tparam INTERVAL_T Interval type (created from NUMERIC_T).
+ * @tparam YDIMS Size of the search space y
+ * @tparam NPARAMS Size of the parameter vector p
  */
 template <typename OBJECTIVE_T,
           typename NUMERIC_T = double,
-          typename POLICIES = suggested_solver_policies<double>>
+          typename POLICIES = suggested_solver_policies<double>,
+          int YDIMS = Eigen::Dynamic,
+          int NPARAMS = Eigen::Dynamic>
 class LocalOptimaBNBSolver
 {
 
 public:
-    typedef boost::numeric::interval<NUMERIC_T, POLICIES> interval_t;
-    typedef BNBSolverResults<NUMERIC_T, interval_t> results_t;
+    using interval_t = boost::numeric::interval<NUMERIC_T, POLICIES>;
+    using results_t = BNBSolverResults<NUMERIC_T, interval_t, YDIMS>;
+    /**
+     * @brief Eigen::Vector type of the search arguments y
+     */
+    using y_t = Eigen::Vector<NUMERIC_T, YDIMS>;
+
+    /**
+     * @brief Eigen::Vector type of the parameter vector p
+    */
+    using params_t = Eigen::Vector<NUMERIC_T, NPARAMS>;
+
+    /**
+     * @brief Eigen::Vector type of intervals for the search arguments y
+     */
+    using y_interval_t = Eigen::Vector<interval_t, YDIMS>;
+
+    /**
+     * @brief Eigen::Matrix type of the Hessian of h(...) w.r.t y
+    */
+    using y_hessian_t = Eigen::Matrix<NUMERIC_T, YDIMS, YDIMS>;
+
+    /**
+     * @brief Eigen::Matrix type of the Hessian of h(...) w.r.t y as an interval type
+    */
+    using y_hessian_interval_t = Eigen::Matrix<interval_t, YDIMS, YDIMS>;
 
     /**
      * @brief The objective function h(t, x, y; p) of which to find the minima.
@@ -71,14 +99,14 @@ public:
 
     /**
      * @brief The prefix name for the solver log file
-    */
+     */
     std::string m_log_name;
 
 private:
     /**
-     * @brief gamer zone
+     * @brief Queue of intervals in the domain of @c m_objective to search for local optima.
      */
-    std::queue<vector<interval_t>> m_workq;
+    std::queue<y_interval_t> m_workq;
 
 public:
     /**
@@ -88,7 +116,7 @@ public:
                          BNBSolverSettings<NUMERIC_T> const &t_settings)
         : m_objective{t_objective}, m_settings{t_settings}, m_log_name{"bnb_log"} {}
 
-    void set_search_domain(vector<interval_t> y)
+    void set_search_domain(y_interval_t y)
     {
         m_workq.push(y);
     }
@@ -103,7 +131,7 @@ public:
      */
     results_t find_minima_at(NUMERIC_T t,
                              NUMERIC_T x,
-                             vector<NUMERIC_T> const &params,
+                             params_t const &params,
                              bool logging = false)
     {
         if (m_workq.empty())
@@ -121,7 +149,7 @@ public:
         while (!m_workq.empty() && i < m_settings.MAXITER)
         {
             std::cout << "Iteration: " << i++ << std::endl;
-            vector<interval_t> y_i(m_workq.front());
+            y_interval_t y_i(m_workq.front());
             m_workq.pop();
             process_interval(i, t, x, y_i, params, sresults, logger, logging);
             std::cout << "there are still " << m_workq.size() << " things to do" << std::endl;
@@ -150,8 +178,8 @@ private:
     void process_interval(size_t tasknum,
                           NUMERIC_T t,
                           NUMERIC_T x,
-                          vector<interval_t> const &y_i,
-                          vector<NUMERIC_T> const &params,
+                          y_interval_t const &y_i,
+                          params_t const &params,
                           results_t &sresults,
                           BNBSolverLogger &logger,
                           bool logging)
@@ -163,24 +191,24 @@ private:
             logger.log_task_begin(tasknum, clock::now(), y_i);
         }
 
-        vector<bool> dims_converged(y_i.size(), true);
+        vector<bool> dims_converged(y_i.rows(), true);
         bool allconverged = true;
-        for (size_t k = 0; k < y_i.size(); k++)
+        for (int k = 0; k < y_i.rows(); k++)
         {
-            dims_converged[k] = (width(y_i[k]) <= m_settings.TOL_X || (y_i[k].lower() == 0 && y_i[k].upper() == 0));
+            dims_converged[k] = (width(y_i(k)) <= m_settings.TOL_X || (y_i(k).lower() == 0 && y_i(k).upper() == 0));
             allconverged = allconverged && dims_converged[k];
         }
 
         result_code = result_code | (allconverged ? CONVERGENCE_TEST_PASS : 0);
 
         interval_t h(m_objective.value(t, x, y_i, params));
-        vector<interval_t> dhdy(m_objective.ddy(t, x, y_i, params));
+        y_interval_t dhdy(m_objective.grad_y(t, x, y_i, params));
         bool grad_pass = std::all_of(dhdy.begin(), dhdy.end(), [](interval_t ival)
                                      { return boost::numeric::zero_in(ival); });
         result_code = result_code | (grad_pass ? GRADIENT_TEST_PASS : GRADIENT_TEST_FAIL);
 
-        vector<vector<interval_t>> d2hdy2(m_objective.d2dy2(t, x, y_i, params));
-        
+        y_hessian_interval_t d2hdy2(m_objective.hess_y(t, x, y_i, params));
+
         if (is_positive_definite(d2hdy2))
         {
             result_code = result_code | HESSIAN_POSITIVE_DEFINITE;
@@ -307,7 +335,7 @@ private:
             {
                 y_m[i] = median(y[i]);
             }
-            //objective_gradient(t, x, y_m, params, temp, midgrad);
+            // objective_gradient(t, x, y_m, params, temp, midgrad);
             auto midgrad = m_objective.ddy(t, x, y_m, params);
             for (size_t i = 0; i < y.size(); i++)
             {

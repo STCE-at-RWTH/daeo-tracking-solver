@@ -4,10 +4,10 @@
 #include <vector>
 
 #include "boost/numeric/interval.hpp"
+
+#include "solver/objective.hpp"
 #include "solver/settings.hpp"
 #include "solver/local_optima_solver.hpp"
-#include "solver/daeo_solver.hpp"
-#include "solver/objective.hpp"
 
 using std::vector;
 using namespace std::numbers;
@@ -17,6 +17,9 @@ using boost_interval_transc_t = boost::numeric::interval<
     T, suggested_solver_policies<T>>;
 using double_ival = boost_interval_transc_t<double>;
 
+constexpr int NUM_Y_DIMS = 1;
+constexpr int NUM_PARAMS = 4;
+
 int main(int argc, char **argv)
 {
     /* Implement the scenario described in
@@ -25,14 +28,14 @@ int main(int argc, char **argv)
      *
      */
     double x0{1.0};
-    auto f = [](const auto &t, const auto &x, const auto &y, const auto &p) -> auto
+    auto f = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
     {
-        return -(p[0] + y[0]) * x;
+        return -(p(0) + y(0)) * x;
     };
 
     auto h = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
     {
-        return pow(p[1] - pow(y[0], 2), 2) - (x - p[2]) * sin(y[0] * p[3]);
+        return pow(p(1) - pow(y(0), 2), 2) - (x - p(2)) * sin(y(0) * p(3));
     };
 
     BNBSolverSettings<double> optimizer_settings;
@@ -48,29 +51,25 @@ int main(int argc, char **argv)
 
     using optimizer_t = LocalOptimaBNBSolver<decltype(h),
                                              double,
-                                             suggested_solver_policies<double>>;
-    using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double>;
+                                             suggested_solver_policies<double>,
+                                             NUM_Y_DIMS, NUM_PARAMS>;
+    // using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double>;
 
-    vector<optimizer_t::interval_t> y0{
-        {-8.0, 12.0}};
+    optimizer_t::y_interval_t y0(optimizer_t::interval_t{-8.0, 12.0});
 
-    vector<double> p{
-        2.0,
-        1.0,
-        0.5,
-        pi / 2};
+    optimizer_t::params_t p(2.0, 1.0, 0.5, pi / 2);
 
-    // optimizer_t optimizer(h, optimizer_settings);
-    // optimizer.set_search_domain(y0);
-    // auto results = optimizer.find_minima_at(0, x0, p, true);
-    // fmt::print("Found {} minima:\n", results.minima_intervals.size());
-    // for (auto &y_argmin : results.minima_intervals)
-    // {
-    //     fmt::print("f(0, {:.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
-    // }
+    optimizer_t optimizer(h, optimizer_settings);
+    optimizer.set_search_domain(y0);
+    auto results = optimizer.find_minima_at(0, x0, p, true);
+    fmt::print("Found {} minima:\n", results.minima_intervals.size());
+    for (auto &y_argmin : results.minima_intervals)
+    {
+        fmt::print("f(0, {:.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
+    }
 
-    solver_t solver(f, h, optimizer_settings, solver_settings);
-    solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
+    // solver_t solver(f, h, optimizer_settings, solver_settings);
+    // solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
 
     return 0;
 }

@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <ranges>
 #include <string>
 
 #include "boost/numeric/interval.hpp"
@@ -17,8 +18,7 @@
 #include "fmt/ostream.h"
 #include "fmt/ranges.h"
 
-#include "fmt_extensions/interval.hpp"
-#include "utils/io.hpp"
+#include "utils/fmt_extensions.hpp"
 
 using boost::numeric::interval;
 using std::vector;
@@ -81,7 +81,7 @@ constexpr char BNB_LOG_COLUMN_NAMES[]{"TASKNUM\tTSTAMP\tEVENTID\tEXTRACODE\tX\tH
 constexpr char LOG_TNUM_TSTAMP[]{"{:d}\t{:%S}\t"}; //{:%Y-%d-%m %H:%M:%S},"
 constexpr char LOG_EID_EXTRA[]{"{:d}\t{:d}\t"};
 constexpr char LOG_NUMERIC_VAL[]{"{:.8e}\t"};
-constexpr char LOG_VECTOR_NUMERIC_VALS[]{"{::.8e}\t"};
+constexpr char LOG_ITERABLE_NUMERIC_VALS[]{"{::.8e}\t"};
 constexpr char LOG_MATRIX_NUMERIC_VALS[]{"{:::.8e}\t"};
 
 using sys_time_point_t = std::chrono::time_point<std::chrono::system_clock>;
@@ -121,13 +121,13 @@ public:
         }
     }
 
-    template <typename T>
-    void log_computation_begin(size_t tasknum, sys_time_point_t time, vector<T> const &domain, size_t threadid = 0)
+    template <std::ranges::range Y>
+    void log_computation_begin(size_t tasknum, sys_time_point_t time, Y const &domain, size_t threadid = 0)
     {
         m_logging_start = time;
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, 0, 0);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, domain);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, domain);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
     }
 
@@ -139,21 +139,21 @@ public:
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
     }
 
-    template <typename T>
-    void log_task_begin(size_t tasknum, sys_time_point_t time, vector<T> const &ival, size_t threadid = 0)
+    template <std::ranges::range Y>
+    void log_task_begin(size_t tasknum, sys_time_point_t time, Y const &y, size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_BEGIN, 0);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, ival);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
     }
 
-    template <typename T>
-    void log_task_complete(size_t tasknum, sys_time_point_t time, vector<T> const &ival, size_t reason, size_t threadid = 0)
+    template <std::ranges::range Y>
+    void log_task_complete(size_t tasknum, sys_time_point_t time, Y const &y, size_t reason, size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_COMPLETE, reason);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, ival);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
     }
 
@@ -164,32 +164,32 @@ public:
         fmt::print(outs[threadid], "None\tNone\tNone\tNone\t{::d}\n", convergence);
     }
 
-    template <typename T>
+    template <typename T, std::ranges::range Y, std::ranges::range DHDY>
     void log_gradient_test(size_t tasknum, sys_time_point_t time,
-                           vector<T> const &x, T const &h,
-                           vector<T> const &dhdx, size_t threadid = 0)
+                           Y const &x, T const &h,
+                           DHDY const &dhdx, size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, GRADIENT_TEST, 0);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, x);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, dhdx);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdx);
         fmt::print(outs[threadid], "None\tNone\n");
     }
 
-    template <typename T>
+    template <typename T, std::ranges::range Y, std::ranges::range DHDY, typename DDHDDY>
     void log_hessian_test(size_t tasknum, sys_time_point_t time,
                           TestResultCode testres,
-                          vector<T> const &x, T const &h,
-                          vector<T> const &dhdx, vector<vector<T>> &ddhdxx,
+                          Y const &y, T const &h,
+                          DHDY const &dhdy, DDHDDY &ddhddy,
                           size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, HESSIAN_TEST, testres);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, dhdx);
-        fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, ddhdxx);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdy);
+        fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, ddhddy);
         fmt::print(outs[threadid], "None\n");
     }
 
@@ -203,9 +203,9 @@ public:
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, ALL_TESTS, combined_results);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, x);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, x);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
-        fmt::print(outs[threadid], LOG_VECTOR_NUMERIC_VALS, dhdx);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdx);
         fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, ddhdxx);
         fmt::print(outs[threadid], "{::d}\n", convergence);
     }
