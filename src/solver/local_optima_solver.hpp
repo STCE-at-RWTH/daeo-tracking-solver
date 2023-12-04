@@ -18,7 +18,6 @@
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 
-
 #include "objective.hpp"
 #include "settings.hpp"
 #include "utils/fmt_extensions.hpp"
@@ -69,7 +68,7 @@ public:
 
     /**
      * @brief Eigen::Vector type of the parameter vector p
-    */
+     */
     using params_t = Eigen::Vector<NUMERIC_T, NPARAMS>;
 
     /**
@@ -79,12 +78,12 @@ public:
 
     /**
      * @brief Eigen::Matrix type of the Hessian of h(...) w.r.t y
-    */
+     */
     using y_hessian_t = Eigen::Matrix<NUMERIC_T, YDIMS, YDIMS>;
 
     /**
      * @brief Eigen::Matrix type of the Hessian of h(...) w.r.t y as an interval type
-    */
+     */
     using y_hessian_interval_t = Eigen::Matrix<interval_t, YDIMS, YDIMS>;
 
     /**
@@ -222,7 +221,7 @@ private:
             result_code = result_code | HESSIAN_MAYBE_INDEFINITE;
         }
 
-        logger.log_all_tests(tasknum, clock::now(), result_code, y_i, h, dhdy, d2hdy2, dims_converged);
+        // logger.log_all_tests(tasknum, clock::now(), result_code, y_i, h, dhdy, d2hdy2, dims_converged);
         if ((result_code & GRADIENT_TEST_FAIL) | (result_code & HESSIAN_NEGATIVE_DEFINITE))
         {
             // gradient test OR hessian test failed
@@ -273,85 +272,55 @@ private:
      * @brief Cuts the n-dimensional range @c x in each dimension that is not flagged in @c dims_converged
      * @returns @c vector of n-dimensional intervals post-split
      */
-    vector<vector<interval_t>> bisect_interval(vector<interval_t> const &y,
-                                               vector<bool> const &dims_converged)
+    vector<y_interval_t> bisect_interval(y_interval_t const &y, vector<bool> const &dims_converged)
     {
-        vector<vector<interval_t>> res;
-        if (dims_converged[0])
-        {
-            res.emplace_back(1, interval_t(y[0]));
-        }
-        else
-        {
-            res.emplace_back(1, interval_t(y[0].lower(), median(y[0])));
-            res.emplace_back(1, interval_t(median(y[0]), y[0].upper()));
-        }
-        for (size_t i = 1; i < y.size(); i++)
-        {
-            size_t n = res.size();
-            for (size_t j = 0; j < n; j++)
-            {
-                if (dims_converged[i])
-                {
-                    res[j].emplace_back(y[i]);
-                }
-                else
-                {
-                    vector<interval_t> temp(res[j]);
-                    res[j].emplace_back(y[i].lower(), median(y[i]));
-                    temp.emplace_back(median(y[i]), y[i].upper());
-                    res.push_back(temp);
-                }
-            }
-        }
+        vector<y_interval_t> res;
+        
         fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
         return res;
     }
 
     /**
-     *
+     * @brief Shrink an interval via bisection.
      */
-    vector<interval_t> narrow_via_bisection(NUMERIC_T t,
-                                            NUMERIC_T x,
-                                            vector<interval_t> const &y_in,
-                                            vector<NUMERIC_T> const &params,
-                                            vector<bool> dimsconverged)
+    y_interval_t narrow_via_bisection(NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_in,
+                                      params_t const &params, vector<bool> dimsconverged)
     {
-        vector<interval_t> y(y_in);
-        vector<NUMERIC_T> y_m(y.size());
+        y_interval_t y(y_in);
+        y_t y_m(y.rows());
+        y_t gradient_y_m(y.rows());
 
         size_t iteration = 0;
-        bool converged = false;
         while (iteration < m_settings.MAX_REFINE_ITER)
         {
-            converged = std::all_of(dimsconverged.begin(), dimsconverged.end(),
-                                    [](bool b) -> bool
-                                    { return b; });
-            if (converged)
+            if (std::all_of(dimsconverged.begin(), dimsconverged.end(),
+                            [](bool b) -> bool
+                            { return b; }))
             {
                 break;
             }
-            for (size_t i = 0; i < y.size(); i++)
+
+            for (int i = 0; i < y.rows(); i++)
             {
-                y_m[i] = median(y[i]);
+                y_m(i) = median(y(i));
             }
             // objective_gradient(t, x, y_m, params, temp, midgrad);
-            auto midgrad = m_objective.ddy(t, x, y_m, params);
-            for (size_t i = 0; i < y.size(); i++)
+            gradient_y_m = m_objective.grad_y(t, x, y_m, params);
+            for (int i = 0; i < y.size(); i++)
             {
                 if (!dimsconverged[i])
                 {
                     // increasing at midpoint -> minimum is to the left of midpoint
-                    if (midgrad[i] > 0)
+                    if (gradient_y_m(i) > 0)
                     {
-                        y[i] = interval_t(y[i].lower(), y_m[i]);
+                        y(i) = interval_t(y[i].lower(), y_m[i]);
                     }
                     else
                     {
-                        y[i] = interval_t(y_m[i], y[i].upper());
+                        y(i) = interval_t(y_m[i], y[i].upper());
                     }
                 }
-                dimsconverged[i] = width(y[i]) <= m_settings.TOL_X;
+                dimsconverged[i] = width(y(i)) <= m_settings.TOL_X;
             }
             iteration++;
         }

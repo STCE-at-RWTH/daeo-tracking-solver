@@ -14,7 +14,7 @@ using boost::numeric::square;
 #include "fmt/chrono.h"
 #include "fmt/ranges.h"
 
-#include "fmt_extensions/interval.hpp"
+#include "utils/fmt_extensions.hpp"
 #include "utils/propagate_dynamic.hpp"
 
 template <typename T>

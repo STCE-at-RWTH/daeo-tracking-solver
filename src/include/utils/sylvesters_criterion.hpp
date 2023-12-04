@@ -4,6 +4,8 @@
 #include "boost/numeric/interval.hpp"
 #include "Eigen/Dense"
 
+#include "interval_eigen_traits.hpp"
+
 /**
  * @brief Check if argument is less than or equal to zero.
  */
@@ -28,21 +30,17 @@ inline bool nonnegative(T arg) { return arg >= 0; }
 template <typename T, typename P>
 inline bool nonnegative(boost::numeric::interval<T, P> arg) { return arg.upper() >= 0; }
 
-template <typename T, int NDIMS>
-bool is_positive_definite(Eigen::Matrix<T, NDIMS, NDIMS> const &A)
+template <typename Derived>
+bool is_positive_definite(Eigen::MatrixBase<Derived> const &A)
 {
-    if constexpr (NDIMS == Eigen::Dynamic)
+    if (A.rows() != A.cols())
     {
-        if (A.rows() != A.cols())
-        {
-            return false;
-        }
-    } // non-square matrices cannot be positive definite
-    auto d = A.determinant();
+        return false;
+    }
+    // non-square matrices cannot be positive definite
     for (int n = 0; n < A.rows(); n++)
     {
-        Eigen::MatrixX<T> nth_principal_submatrix = A.block(0, 0, n + 1, n + 1);
-        if (nonpositive(nth_principal_submatrix.determinant()))
+        if (nonpositive(A.block(0, 0, n + 1, n + 1).determinant()))
         {
             return false;
         }
