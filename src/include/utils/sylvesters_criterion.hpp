@@ -30,7 +30,8 @@ inline bool nonnegative(T arg) { return arg >= 0; }
 template <typename T, typename P>
 inline bool nonnegative(boost::numeric::interval<T, P> arg) { return arg.upper() >= 0; }
 
-template <typename Derived>
+
+template<typename Derived>
 bool is_positive_definite(Eigen::MatrixBase<Derived> const &A)
 {
     if (A.rows() != A.cols())

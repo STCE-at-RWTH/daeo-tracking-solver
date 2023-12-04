@@ -27,6 +27,7 @@ endif()
 find_package(fmt)
 
 # compiler options
+# Warn all
 add_compile_options(-Wall)
 
 # dco be like

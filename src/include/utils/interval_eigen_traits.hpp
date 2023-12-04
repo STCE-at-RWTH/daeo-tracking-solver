@@ -17,32 +17,33 @@ namespace Eigen
         enum
         {
             IsComplex = 0,
-            IsInteger = 0,             // specialization here if we want intervals of integers
-            IsSigned = 1,              // does this make sense? intervals of uints or ufloats don't seem useful.
-            RequireInitialization = 1, // intervals need initialization (probably?)
-            ReadCost = 2,              // could also be reasonably set to 1, even though there are two values
-            AddCost = 2,               // two numbers
-            MulCost = 2                // two numbers
+            IsInteger = 0,                     // specialization here if we want intervals of integers
+            IsSigned = NumTraits<T>::IsSigned, // does this make sense? intervals of uints or ufloats don't seem useful.
+            RequireInitialization = 1,         // intervals need initialization (probably?)
+            ReadCost = 2,                      // could also be reasonably set to 1, even though there are two values
+            AddCost = 2,                       // two numbers
+            MulCost = 2                        // two numbers
         };
 
         // Intervals cannot be made out of complex numbers due to total ordering requirement
         using Real = boost::numeric::interval<T, POLICIES>;
+        using Literal = T;
         // If we end up doing lots of integer interval work, this should be specialized
         using NonInteger = boost::numeric::interval<T, POLICIES>;
-        // I don't know what this is for.
+        // Intervals aren't intermediates in lazy expressions. Just copy them.
         using Nested = boost::numeric::interval<T, POLICIES>;
 
         // "highest" returns [max, max] st. highest > everything else
-        static inline Real highest() {
+        static inline Real highest()
+        {
             return Real(NumTraits<T>::highest());
         }
 
         // "lowest" returns [min, min] st. lowest < everything else
-        static inline Real lowest() {
+        static inline Real lowest()
+        {
             return Real(NumTraits<T>::lowest());
         }
-
-        
     };
 
 }; // Eigen
@@ -82,5 +83,5 @@ namespace boost::numeric
         return interval<T, POLICIES>();
     }
 
-}; //boost::numeric
+}; // boost::numeric
 #endif
