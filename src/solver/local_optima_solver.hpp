@@ -197,7 +197,6 @@ private:
             dims_converged[k] = (width(y_i(k)) <= m_settings.TOL_X || (y_i(k).lower() == 0 && y_i(k).upper() == 0));
             allconverged = allconverged && dims_converged[k];
         }
-
         result_code = result_code | (allconverged ? CONVERGENCE_TEST_PASS : 0);
 
         interval_t h(m_objective.value(t, x, y_i, params));
@@ -207,7 +206,6 @@ private:
         result_code = result_code | (grad_pass ? GRADIENT_TEST_PASS : GRADIENT_TEST_FAIL);
 
         y_hessian_interval_t d2hdy2(m_objective.hess_y(t, x, y_i, params));
-
         if (is_positive_definite(d2hdy2))
         {
             result_code = result_code | HESSIAN_POSITIVE_DEFINITE;
@@ -275,7 +273,32 @@ private:
     vector<y_interval_t> bisect_interval(y_interval_t const &y, vector<bool> const &dims_converged)
     {
         vector<y_interval_t> res;
-        
+        res.emplace_back(y.rows());
+        res[0] = y;
+        if (!dims_converged[0])
+        {
+            NUMERIC_T m = median(res[0](0));
+            res.emplace_back(y.rows());
+            res.back() = y;
+            res[0](0).assign(res[0](0).lower(), m);
+            res.back()(0).assign(m, res.back()(0).upper());
+        }
+        for (int i = 1; i < y.rows(); i++)
+        {
+            if (dims_converged[i])
+            {
+                continue;
+            }
+            size_t result_size = res.size();
+            NUMERIC_T m = median(res[0](i));
+            for (size_t j = 0; j < result_size; j++)
+            {
+                res.emplace_back(y.rows());
+                res.back() = y;
+                res[j](i).assign(res[j](i).lower(), m);
+                res.back()(i).assign(m, res.back()(i).upper());
+            }
+        }
         fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
         return res;
     }

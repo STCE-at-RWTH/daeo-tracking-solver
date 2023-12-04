@@ -16,24 +16,27 @@
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 
-#include "fmt_extensions/interval.hpp"
 #include "settings.hpp"
-#include "utils/io.hpp"
-#include "utils/matrices.hpp"
-
 #include "local_optima_solver.hpp"
+#include "utils/fmt_extensions.hpp"
 
 using boost::numeric::median;
 using std::vector;
 
-template <typename XPRIME, typename OBJECTIVE, typename NUMERIC_T>
+template <typename XPRIME, typename OBJECTIVE, typename NUMERIC_T, int YDIMS, int NPARAMS>
 class DAEOTrackingSolver
 {
-    size_t m_stepnum = 0;
+public:
+    using optimizer_t = LocalOptimaBNBSolver<OBJECTIVE, NUMERIC_T, suggested_solver_policies<NUMERIC_T>, YDIMS, NPARAMS>;
+    using y_t = optimizer_t::y_t;
+    using y_hessian_t = optimizer_t::y_hessian_t;
+    using params_t = optimizer_t::params_t;
+    using interval_t = optimizer_t::interval_t;
 
+private:
     DAEOWrappedFunction<XPRIME> const m_xprime;
     DAEOWrappedFunction<OBJECTIVE> const m_objective;
-    LocalOptimaBNBSolver<OBJECTIVE, NUMERIC_T, suggested_solver_policies<NUMERIC_T>> m_optimizer;
+    optimizer_t m_optimizer;
     DAEOSolverSettings<NUMERIC_T> m_settings;
 
 public:
@@ -43,12 +46,13 @@ public:
         : m_xprime(t_xprime), m_objective(t_objective),
           m_optimizer(t_objective, t_opt_settings), m_settings(t_global_settings)
     {
-        m_optimizer.set_search_domain({{m_settings.y0_min, m_settings.y0_max}});
+        m_optimizer.set_search_domain(typename optimizer_t::y_interval_t(interval_t{m_settings.y0_min, m_settings.y0_max}));
     }
 
-    std::tuple<NUMERIC_T, vector<NUMERIC_T>, size_t> find_optimum(vector<vector<NUMERIC_T>> const &y,
+    // this needs to be somewhere else
+    std::tuple<NUMERIC_T, y_t, size_t> find_optimum(vector<y_t> const &y,
                                                                   NUMERIC_T const t, NUMERIC_T const x,
-                                                                  vector<NUMERIC_T> const &params)
+                                                                  params_t const &params)
     {
         NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
         size_t i_star;
@@ -65,47 +69,45 @@ public:
     }
 
     template <typename IT>
-    std::tuple<NUMERIC_T, vector<NUMERIC_T>, size_t> find_optimum_in_results(BNBSolverResults<NUMERIC_T, IT> const &b,
-                                                                             NUMERIC_T const t, NUMERIC_T const x,
-                                                                             vector<NUMERIC_T> const &params)
+    std::tuple<NUMERIC_T, y_t, size_t> find_optimum_in_results(BNBSolverResults<NUMERIC_T, IT, YDIMS> const &b,
+                                                               NUMERIC_T const t, NUMERIC_T const x,
+                                                               params_t const &params)
     {
-        vector<vector<NUMERIC_T>> y_medians;
+        vector<y_t> y_medians;
         for (auto &y_i : b.minima_intervals)
         {
-            y_medians.emplace_back(y_i.size());
+            y_medians.emplace_back();
+            y_medians.back().resize(y_i.size());
             std::transform(y_i.begin(), y_i.end(), y_medians.back().begin(),
-                           [](auto it)
-                           { return median(it); });
+                           [](auto ival)
+                           { return median(ival); });
         }
         return find_optimum(y_medians, t, x, params);
     }
 
     void solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
                     NUMERIC_T const dt0, NUMERIC_T const x0,
-                    vector<NUMERIC_T> const &params)
+                    params_t const &params)
     {
         NUMERIC_T t = t0;
         NUMERIC_T x = x0;
         NUMERIC_T dt = dt0;
 
         NUMERIC_T h_star;
-        vector<NUMERIC_T> y_star;
+        y_t y_star;
         size_t i_star;
 
         // We need to take one time step to estimate dy*/dt
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
-        auto bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
+        typename optimizer_t::results_t bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
         std::tie(h_star, y_star, i_star) = find_optimum_in_results(bnb_results_0, t, x, params);
         fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
         auto [x_next, y_next] = solve_G_is_zero(t, dt0, x, y_star, params);
         fmt::println("  x_next is {:.4e}, y_next is {::.4e}", x_next, y_next);
 
-        vector<NUMERIC_T> dydt_est(y_next.size());
-        for (size_t i = 0; i < y_next.size(); i++)
-        {
-            dydt_est[i] = (y_next[i] - y_star[i]) / dt;
-        }
+        y_t dydt_est;
+        dydt_est = (y_next - y_star) / dt;
 
         fmt::println("  estimated dydt is {::.4e}", dydt_est);
 
@@ -123,7 +125,8 @@ public:
         {
             i_star_prev = i_star;
             std::tie(h_star, y_star, i_star) = find_optimum({y_next}, t, x_next, params);
-            if (i_star != i_star_prev){
+            if (i_star != i_star_prev)
+            {
                 fmt::println("  EVENT OCCURRED IN ITERATION {:d}", iter);
             }
             fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
@@ -159,12 +162,12 @@ public:
      */
     vector<NUMERIC_T> G(NUMERIC_T const t, NUMERIC_T const dt,
                         NUMERIC_T const x0, NUMERIC_T const x1,
-                        vector<NUMERIC_T> const &y0, vector<NUMERIC_T> const &y1, vector<NUMERIC_T> const &p)
+                        vector<y_t> const &y0, vector<y_t> const &y1, params_t const &p)
     {
         NUMERIC_T t1 = t + dt;
-        vector<NUMERIC_T> result(1 + y0.size());
+        vector<NUMERIC_T> result(1 + y0.size()*y0[0].rows());
         result[0] = x0 - x1 + dt / 2 * (m_xprime.value(t1, x1, y1, p) + m_xprime.value(t, x0, y0, p));
-        vector<NUMERIC_T> dh1dy(m_objective.ddy(t1, x1, y1, p));
+        vector<NUMERIC_T> dh1dy(m_objective.grad_y(t1, x1, y1, p));
         for (size_t i = 1; i < result.size(); i++)
         {
             result[i] = dh1dy[i - 1];

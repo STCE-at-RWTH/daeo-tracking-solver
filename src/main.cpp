@@ -5,9 +5,11 @@
 
 #include "boost/numeric/interval.hpp"
 
+#include "solver/daeo_solver.hpp"
+#include "solver/local_optima_solver.hpp"
 #include "solver/objective.hpp"
 #include "solver/settings.hpp"
-#include "solver/local_optima_solver.hpp"
+
 
 using std::vector;
 using namespace std::numbers;
@@ -53,7 +55,7 @@ int main(int argc, char **argv)
                                              double,
                                              suggested_solver_policies<double>,
                                              NUM_Y_DIMS, NUM_PARAMS>;
-    // using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double>;
+    using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
 
     optimizer_t::y_interval_t y0(optimizer_t::interval_t{-8.0, 12.0});
 
@@ -68,8 +70,8 @@ int main(int argc, char **argv)
         fmt::print("f(0, {:.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
     }
 
-    // solver_t solver(f, h, optimizer_settings, solver_settings);
-    // solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
+    solver_t solver(f, h, optimizer_settings, solver_settings);
+    solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
 
     return 0;
 }
