@@ -193,17 +193,17 @@ public:
         fmt::print(outs[threadid], "None\n");
     }
 
-    template <typename T>
+    template <typename T, std::ranges::range Y, std::ranges::range DHDY, std::ranges::range DDHDYY_COLS>
     void log_all_tests(size_t tasknum, sys_time_point_t time,
                        size_t combined_results,
-                       vector<T> const &x, T const &h,
-                       vector<T> const &dhdx, vector<vector<T>> &ddhdxx,
+                       T const &x, T const &h,
+                       DHDY const &dhdx, DDHDYY_COLS &ddhdxx,
                        vector<bool> const &convergence,
                        size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, ALL_TESTS, combined_results);
-        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, x);
+        fmt::print(outs[threadid], LOG_NUMERIC_VAL, x);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdx);
         fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, ddhdxx);

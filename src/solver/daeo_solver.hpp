@@ -83,6 +83,18 @@ public:
         return y_medians;
     }
 
+    size_t estimate_steps_without_gopt(vector<y_t> y_k, vector<y_t> dydt_est, NUMERIC_T dt)
+    {
+        size_t N_est = std::numeric_limits<size_t>::max();
+        for(size_t i = 0; i<dydt_est.size(); i++){
+            for(size_t j = i+1; j<dydt_est.size(); j++){
+                // for every pair of y_ks, see how long before they run into each other
+                y_t drift_steps = Eigen::abs(dydt_est[i])
+            }
+        }
+        return N_est
+    }
+
     std::tuple<vector<NUMERIC_T>, vector<NUMERIC_T>> solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
                                                                 NUMERIC_T const dt0, NUMERIC_T const x0,
                                                                 params_t const &params)
@@ -169,8 +181,6 @@ public:
         The other equations are provided by dh/dyi = 0 at x_{k+1} and y_{k+1}
 
         from this structure we compute G and delG in blocks, since we have derivative routines available for f=x' and h
-
-        NOTE: these need to be extended to track ALL of the local optima y and not just the global.
     */
 
     /**

@@ -35,10 +35,23 @@ int main(int argc, char **argv)
         return -(p(0) + y(0)) * x;
     };
 
+    double x0{1.0};
+    auto f_griewank = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
+    {
+        return y;
+    };
+
     auto h = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
     {
         return pow(p(1) - pow(y(0), 2), 2) - (x - p(2)) * sin(y(0) * p(3));
     };
+
+    auto h_griewank = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
+    {
+        return pow(x-y, 2) + sin(p(1)*y);
+    };
+
+    
 
     BNBSolverSettings<double> optimizer_settings;
     optimizer_settings.TOL_X = 1.0e-6;
@@ -58,7 +71,6 @@ int main(int argc, char **argv)
     using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
 
     optimizer_t::y_interval_t y0(optimizer_t::interval_t{-8.0, 12.0});
-
     optimizer_t::params_t p(2.0, 1.0, 0.5, pi / 2);
 
     optimizer_t optimizer(h, optimizer_settings);
