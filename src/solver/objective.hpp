@@ -134,9 +134,9 @@ public:
         using dco_mode_t = dco::ga1s<dco_tangent_t>;
         using active_t = dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
-        XY_ACTIVE_T h_active;
+        active_t h_active;
         Eigen::Vector<active_t, YDIMS> y_active(y.rows());
-        for (size_t i = 0; i < y.rows(); i++)
+        for (int i = 0; i < y.rows(); i++)
         {
             dco::passive_value(y_active(i)) = y(i);
             tape->register_variable(y_active(i));
@@ -144,7 +144,6 @@ public:
         active_t x_active;
         dco::passive_value(x_active) = x;
         tape->register_variable(x_active);
-
         dco::derivative(dco::value(x_active)) = 1; // wiggle x
         h_active = m_fn(t, x_active, y_active, p); // compute h
         dco::value(dco::derivative(h_active)) = 1; // sensitivity to h is 1
@@ -152,7 +151,7 @@ public:
         // If YDIMS is known at compile time, constructor is a no-op.
         Eigen::Vector<XY_ACTIVE_T, YDIMS> ddxddy(y.rows());
         // harvest derivative
-        for (size_t i = 0; i < ddxddy.rows();)
+        for (int i = 0; i < ddxddy.rows(); i++)
         {
             ddxddy(i) = dco::derivative(dco::derivative(y_active(i))); // harvest d2dxdy
         }

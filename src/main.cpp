@@ -71,7 +71,7 @@ int main(int argc, char **argv)
     }
 
     solver_t solver(f, h, optimizer_settings, solver_settings);
-    solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
+    auto [t, x_path] = solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
 
     return 0;
 }

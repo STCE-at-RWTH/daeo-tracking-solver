@@ -147,11 +147,11 @@ public:
         results_t sresults;
         while (!m_workq.empty() && i < m_settings.MAXITER)
         {
-            std::cout << "Iteration: " << i++ << std::endl;
+            //std::cout << "Iteration: " << i++ << std::endl;
             y_interval_t y_i(m_workq.front());
             m_workq.pop();
             process_interval(i, t, x, y_i, params, sresults, logger, logging);
-            std::cout << "there are still " << m_workq.size() << " things to do" << std::endl;
+            //std::cout << "there are still " << m_workq.size() << " things to do" << std::endl;
         }
 
         auto comp_end = std::chrono::high_resolution_clock::now();
@@ -299,7 +299,7 @@ private:
                 res.back()(i).assign(m, res.back()(i).upper());
             }
         }
-        fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
+        //fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
         return res;
     }
 

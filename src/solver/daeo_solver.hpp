@@ -50,31 +50,29 @@ public:
     }
 
     // this needs to be somewhere else
-    std::tuple<NUMERIC_T, y_t, size_t> find_optimum(vector<y_t> const &y,
-                                                                  NUMERIC_T const t, NUMERIC_T const x,
-                                                                  params_t const &params)
+    std::tuple<NUMERIC_T, y_t, size_t> find_optimum(vector<y_t> const &y_k,
+                                                    NUMERIC_T const t, NUMERIC_T const x,
+                                                    params_t const &params)
     {
         NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
         size_t i_star;
-        for (size_t i = 0; i < y.size(); i++)
+        for (size_t i = 0; i < y_k.size(); i++)
         {
-            NUMERIC_T h = m_objective.value(t, x, y[i], params);
+            NUMERIC_T h = m_objective.value(t, x, y_k[i], params);
             if (h < h_star)
             {
                 h_star = h;
                 i_star = i;
             }
         }
-        return {h_star, y[i_star], i_star};
+        return {h_star, y_k[i_star], i_star};
     }
 
-    template <typename IT>
-    std::tuple<NUMERIC_T, y_t, size_t> find_optimum_in_results(BNBSolverResults<NUMERIC_T, IT, YDIMS> const &b,
-                                                               NUMERIC_T const t, NUMERIC_T const x,
-                                                               params_t const &params)
+    vector<y_t> y_k_medians(typename optimizer_t::results_t const &optres, NUMERIC_T const t,
+                            NUMERIC_T const x, params_t const &params)
     {
         vector<y_t> y_medians;
-        for (auto &y_i : b.minima_intervals)
+        for (auto &y_i : optres.minima_intervals)
         {
             y_medians.emplace_back();
             y_medians.back().resize(y_i.size());
@@ -82,34 +80,51 @@ public:
                            [](auto ival)
                            { return median(ival); });
         }
-        return find_optimum(y_medians, t, x, params);
+        return y_medians;
     }
 
-    void solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
-                    NUMERIC_T const dt0, NUMERIC_T const x0,
-                    params_t const &params)
+    std::tuple<vector<NUMERIC_T>, vector<NUMERIC_T>> solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
+                                                                NUMERIC_T const dt0, NUMERIC_T const x0,
+                                                                params_t const &params)
     {
         NUMERIC_T t = t0;
         NUMERIC_T x = x0;
         NUMERIC_T dt = dt0;
 
+        vector<NUMERIC_T> xs({x0});
+        vector<NUMERIC_T> ts({t0});
+
         NUMERIC_T h_star;
+        vector<y_t> y_k;
         y_t y_star;
         size_t i_star;
 
-        // We need to take one time step to estimate dy*/dt
+        NUMERIC_T x_next;
+        vector<y_t> y_k_next;
+        size_t i_star_next;
+
+        // We need to take one time step to estimate dy_k/dt
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
         typename optimizer_t::results_t bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
-        std::tie(h_star, y_star, i_star) = find_optimum_in_results(bnb_results_0, t, x, params);
-        fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
-        auto [x_next, y_next] = solve_G_is_zero(t, dt0, x, y_star, params);
-        fmt::println("  x_next is {:.4e}, y_next is {::.4e}", x_next, y_next);
+        y_k = y_k_medians(bnb_results_0, t, x, params);
+        std::tie(h_star, y_star, i_star) = find_optimum(y_k, t, x, params);
+        fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}", t, x, y_star, params, h_star);
+        fmt::println("    this occurs at index {:d}", i_star);
+        std::tie(x_next, y_k_next) = solve_G_is_zero(t, dt0, x, i_star, y_k, params);
+        fmt::println("  x_next is {:.4e}, y_next is {:::.4e}", x_next, y_k_next);
 
-        y_t dydt_est;
-        dydt_est = (y_next - y_star) / dt;
-
-        fmt::println("  estimated dydt is {::.4e}", dydt_est);
+        vector<y_t> dydt_est(y_k.size());
+        for (size_t i = 0; i < dydt_est.size(); i++)
+        {
+            dydt_est[i] = (y_k_next[i] - y_k[i]) / dt;
+        }
+        y_k = y_k_next;
+        fmt::println("  estimated dydt is {:::.4e}", dydt_est);
+        t += dt;
+        x = x_next;
+        xs.push_back(x);
+        ts.push_back(t);
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
         // even if they did, would it really matter? since we don't do any implicit function silliness
@@ -120,21 +135,29 @@ public:
         // This would trigger a search for minima of h(x, y) again, since we may have "lost" one
 
         size_t iter = 1;
-        size_t i_star_prev;
+        size_t iterations_since_search = 0;
         while (t < t_end)
         {
-            i_star_prev = i_star;
-            std::tie(h_star, y_star, i_star) = find_optimum({y_next}, t, x_next, params);
-            if (i_star != i_star_prev)
+            std::tie(h_star, y_star, i_star_next) = find_optimum(y_k, t, x_next, params);
+            if (i_star_next != i_star)
             {
-                fmt::println("  EVENT OCCURRED IN ITERATION {:d}", iter);
+                fmt::println("  **EVENT OCCURRED IN ITERATION {:d}! WE MUST REWIND**", iter);
             }
-            fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}\n", t, x, y_star, params, h_star);
-            std::tie(x_next, y_next) = solve_G_is_zero(t, dt, x_next, y_star, params);
-            fmt::println("  x_next is {:.4e}, y_next is {::.4e}", x_next, y_next);
+            // after handling events, we can move on.
+            i_star = i_star_next;
+            fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}", t, x, y_star, params, h_star);
+            std::tie(x_next, y_k_next) = solve_G_is_zero(t, dt, x, i_star, y_k, params);
+            fmt::println("  x_next is {:.4e}, y_next is {:::.4e}", x_next, y_k_next);
             t += dt;
+            x = x_next;
+            y_k = y_k_next;
+            xs.push_back(x);
+            ts.push_back(t);
+
             iter++;
+            iterations_since_search++;
         }
+        return {ts, xs};
     }
 
     /*
@@ -160,88 +183,72 @@ public:
      * @param[in] y1 "Guess" value of y at t+dt
      * @param[in] p Parameter vector.
      */
-    vector<NUMERIC_T> G(NUMERIC_T const t, NUMERIC_T const dt,
-                        NUMERIC_T const x0, NUMERIC_T const x1,
-                        vector<y_t> const &y0, vector<y_t> const &y1, params_t const &p)
+    Eigen::VectorX<NUMERIC_T> G(NUMERIC_T const t, NUMERIC_T const dt,
+                                NUMERIC_T const x0, NUMERIC_T const x1,
+                                size_t const i_star,
+                                vector<y_t> const &y0, vector<y_t> const &y1, params_t const &p)
     {
         NUMERIC_T t1 = t + dt;
-        vector<NUMERIC_T> result(1 + y0.size()*y0[0].rows());
-        result[0] = x0 - x1 + dt / 2 * (m_xprime.value(t1, x1, y1, p) + m_xprime.value(t, x0, y0, p));
-        vector<NUMERIC_T> dh1dy(m_objective.grad_y(t1, x1, y1, p));
-        for (size_t i = 1; i < result.size(); i++)
+        // y0 is each of the possible minima we are considering.
+        // if we only consider one, y0 has only one item (this is the case with global optimization every step)
+        Eigen::VectorX<NUMERIC_T> result(1 + y0.size() * y0[0].rows());
+        result(0) = x0 - x1 + dt / 2 * (m_xprime.value(t1, x1, y1[i_star], p) + m_xprime.value(t, x0, y0[i_star], p));
+        for (size_t i = 0; i < y0.size(); i++)
         {
-            result[i] = dh1dy[i - 1];
+            result(Eigen::seqN(1 + i * y0[0].rows(), y0[0].rows())) = m_objective.grad_y(t1, x1, y1[i], p);
         }
         return result;
     }
 
     /**
      * @brief Gradient of the function used for newton iteration.
-     * @param[in] t The "next" point in time where we are solving for x and y
+     * @param[in] t_next The "next" point in time where we are solving for x and y
      * @param[in] dt The time step size at k-1
      * @param[in] x
-     * @param[in] y
+     * @param[in] y_k All possible minima we are considering at the future time point.
      * @param[in] p
      */
-    vector<vector<NUMERIC_T>> delG(NUMERIC_T const t, NUMERIC_T const dt,
-                                   NUMERIC_T const x, vector<NUMERIC_T> const &y, vector<NUMERIC_T> const &p)
+    Eigen::MatrixX<NUMERIC_T> delG(NUMERIC_T const t_next, NUMERIC_T const dt,
+                                   NUMERIC_T const x, size_t i_star,
+                                   vector<y_t> const &y_k, params_t const &p)
     {
-        size_t ndims = 1 + y.size();
-        vector<vector<NUMERIC_T>> result(ndims, vector<NUMERIC_T>(ndims));
-        result[0][0] = -1 + dt / 2 * m_xprime.ddx(t, x, y, p);
-        vector<NUMERIC_T> A1(m_objective.d2dxdy(t, x, y, p));
-        vector<NUMERIC_T> A2(m_xprime.ddy(t, x, y, p));
-        vector<vector<NUMERIC_T>> B(m_objective.d2dy2(t, x, y, p));
-        for (size_t j = 1; j < ndims; j++)
+        using Eigen::seqN;
+
+        int ysize = y_k[0].rows();
+        int ndims = 1 + y_k.size() * ysize;
+        Eigen::MatrixX<NUMERIC_T> result(ndims, ndims);
+        result(0, 0) = -1 + dt / 2 * m_xprime.grad_x(t_next, x, y_k[i_star], p);
+        for (size_t i = 0; i < y_k.size(); i++)
         {
-            result[0][j] = A2[j - 1];
-        }
-        for (size_t i = 1; i < ndims; i++)
-        {
-            result[i][0] = A1[i - 1];
-            for (size_t j = 0; j < ndims; j++)
-            {
-                result[i][j] = B[i - 1][j - 1];
-            }
+            result(0, seqN(1 + i * ysize, ysize)) = dt / 2 * m_xprime.grad_y(t_next, x, y_k[i], p);
+            result(seqN(1 + i * ysize, ysize), 0) = m_objective.d2dxdy(t_next, x, y_k[i], p);
+            result(seqN(1 + i * ysize, ysize), seqN(1 + i * ysize, ysize)) = m_objective.hess_y(t_next, x, y_k[i], p);
         }
         return result;
     }
 
-    std::tuple<NUMERIC_T, vector<NUMERIC_T>> solve_G_is_zero(NUMERIC_T const t, NUMERIC_T const dt,
-                                                             NUMERIC_T const x, vector<NUMERIC_T> const &y,
-                                                             vector<NUMERIC_T> const &p)
+    std::tuple<NUMERIC_T, vector<y_t>> solve_G_is_zero(NUMERIC_T const t, NUMERIC_T const dt,
+                                                       NUMERIC_T const x, size_t i_star,
+                                                       vector<y_t> const &y_k,
+                                                       params_t const &p)
     {
         size_t iter = 0;
+        int temp_dims = 1 + y_k.size() * y_k[0].rows();
         NUMERIC_T x_next = x;
-        vector<NUMERIC_T> y_next(y);
-        vector<NUMERIC_T> g_temp;
-        vector<vector<NUMERIC_T>> delg_temp;
+        vector<y_t> y_next(y_k);
+        Eigen::VectorX<NUMERIC_T> g_temp(temp_dims);
+        Eigen::VectorX<NUMERIC_T> diff(temp_dims);
+        Eigen::MatrixX<NUMERIC_T> delg_temp(temp_dims, temp_dims);
 
-        using lhs_t = Eigen::Matrix<NUMERIC_T, Eigen::Dynamic, Eigen::Dynamic>;
-        using rhs_t = Eigen::Vector<NUMERIC_T, Eigen::Dynamic>;
         while (iter < m_settings.MAX_NEWTON_ITERATIONS)
         {
-            g_temp = G(t, dt, x, x_next, y, y_next, p);
-            delg_temp = delG(t + dt, dt, x_next, y_next, p);
-
-            // BAD
-            // TODO use Eigen everywhere!
-            lhs_t lhs(delg_temp.size(), delg_temp.size());
-            rhs_t rhs(g_temp.size());
-
-            for (size_t i = 0; i < delg_temp.size(); i++)
-            {
-                rhs(i) = g_temp[i];
-                for (size_t j = 0; j < delg_temp.size(); j++)
-                {
-                    lhs(i, j) = delg_temp[i][j];
-                }
-            }
-            rhs_t diff = lhs.colPivHouseholderQr().solve(rhs);
+            g_temp = G(t, dt, x, x_next, i_star, y_k, y_next, p);
+            delg_temp = delG(t + dt, dt, x_next, i_star, y_next, p);
+            diff = delg_temp.colPivHouseholderQr().solve(g_temp);
             x_next = x_next - diff(0);
-            for (size_t i = 1; i < g_temp.size(); i++)
+            for (size_t i = 0; i < y_k.size(); i++)
             {
-                y_next[i - 1] = y_next[i - 1] - diff(i);
+                y_next[i] = y_next[i] - diff(Eigen::seqN(1 + i * y_k[0].rows(), y_k[0].rows()));
             }
             if (diff.norm() < m_settings.NEWTON_EPS)
             {

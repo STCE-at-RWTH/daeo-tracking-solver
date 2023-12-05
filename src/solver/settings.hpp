@@ -49,7 +49,7 @@ struct DAEOSolverSettings
 
     size_t SEARCH_FREQUENCY = 1;
     size_t MAX_NEWTON_ITERATIONS = 20;
-    NUMERIC_T NEWTON_EPS = 0.000001;
+    NUMERIC_T NEWTON_EPS = 0.0001;
 };
 
 enum BNBEventCodes {
