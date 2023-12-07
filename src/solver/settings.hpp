@@ -35,7 +35,7 @@ struct BNBSolverSettings
     NUMERIC_T TOL_X;
     NUMERIC_T TOL_Y;
 
-    std::size_t MAXITER = 10000;
+    std::size_t MAXITER = 100;
     std::size_t MAX_REFINE_ITER = 4;
 };
 
@@ -47,12 +47,14 @@ struct DAEOSolverSettings
     NUMERIC_T y0_min;
     NUMERIC_T y0_max;
 
-    size_t SEARCH_FREQUENCY = 1;
+    size_t SEARCH_FREQUENCY = 10;
     size_t MAX_NEWTON_ITERATIONS = 20;
     NUMERIC_T NEWTON_EPS = 0.0001;
+    bool RUN_GLOBAL_OPT_AT_EVENTS = false;
 };
 
-enum BNBEventCodes {
+enum BNBEventCodes
+{
     COMPUTATION_BEGIN,
     COMPUTATION_COMPLETE,
     TASK_BEGIN,

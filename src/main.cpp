@@ -34,8 +34,7 @@ int main(int argc, char **argv)
     {
         return -(p(0) + y(0)) * x;
     };
-
-    double x0{1.0};
+    
     auto f_griewank = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
     {
         return y;

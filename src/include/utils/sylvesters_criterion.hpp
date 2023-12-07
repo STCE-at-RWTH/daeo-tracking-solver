@@ -6,7 +6,7 @@
 #include "boost/numeric/interval.hpp"
 #include "Eigen/Dense"
 
-#include "interval_eigen_traits.hpp"
+#include "eigen_interval_extensions.hpp"
 
 /**
  * @brief Check if argument is less than or equal to zero.

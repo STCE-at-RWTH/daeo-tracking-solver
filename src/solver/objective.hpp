@@ -83,7 +83,8 @@ public:
         active_t x_active;
         dco::value(x_active) = x;
         dco::derivative(x_active) = 1;
-        return dco::derivative(m_fn(t, x, y, p));
+        X_ACTIVE_T res = dco::derivative(m_fn(t, x, y, p));
+        return res;
     }
 
     template <typename NUMERIC_T, typename Y_ACTIVE_T, int YDIMS, int PDIMS>

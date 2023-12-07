@@ -45,6 +45,9 @@ add_compile_definitions(
   GFX_PATH="${GFX_PATH}"
 )
 
+# get boost interval from the submodule
+include_directories(interval/include)
+
 set(objective_headers src/solver/objective.hpp)
 set(bnb_solver_headers src/solver/settings.hpp src/solver/local_optima_solver.hpp)
 set(daeo_solver_headers src/solver/daeo_solver.hpp)

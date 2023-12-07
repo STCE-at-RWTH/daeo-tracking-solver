@@ -19,6 +19,7 @@
 #include "settings.hpp"
 #include "local_optima_solver.hpp"
 #include "utils/fmt_extensions.hpp"
+#include "utils/propagate_dynamic.hpp"
 
 using boost::numeric::median;
 using std::vector;
@@ -83,16 +84,35 @@ public:
         return y_medians;
     }
 
-    size_t estimate_steps_without_gopt(vector<y_t> y_k, vector<y_t> dydt_est, NUMERIC_T dt)
+    size_t estimate_steps_without_gopt(NUMERIC_T t, NUMERIC_T dt, NUMERIC_T x,
+                                       vector<y_t> y_k, vector<y_t> dydt,
+                                       params_t p)
     {
         size_t N_est = std::numeric_limits<size_t>::max();
-        for(size_t i = 0; i<dydt_est.size(); i++){
-            for(size_t j = i+1; j<dydt_est.size(); j++){
-                // for every pair of y_ks, see how long before they run into each other
-                y_t drift_steps = Eigen::abs(dydt_est[i])
+        vector<NUMERIC_T> dhdt(y_k.size());
+        vector<NUMERIC_T> h_k(y_k.size());
+        for (size_t i = 0; i < dhdt.size(); i++)
+        {
+            h_k[i] = m_objective.value(t, x, y_k[i], p);
+            // compute total derivative from partial h partial x and partial h partial y
+            dhdt[i] = m_objective.grad_x(t, x, y_k[i], p) * m_xprime.value(t, x, y_k[i], p) +
+                      m_objective.grad_y(t, x, y_k[i], p).dot(dydt[i]);
+        }
+        for (size_t i = 0; i < dhdt.size(); i++)
+        {
+            for (size_t j = i + 1; j < dhdt.size(); j++)
+            {
+                // compare each pair of minima
+                NUMERIC_T dist = abs(h_k[i] - h_k[j]);        // distance between
+                NUMERIC_T rate = abs(dhdt[i]) + abs(dhdt[j]); // maximum rate of decrease
+                size_t n = static_cast<size_t>(dist / rate);  // we want to truncate here!
+                if (n < N_est)
+                {
+                    N_est = n;
+                }
             }
         }
-        return N_est
+        return N_est;
     }
 
     std::tuple<vector<NUMERIC_T>, vector<NUMERIC_T>> solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
@@ -100,20 +120,17 @@ public:
                                                                 params_t const &params)
     {
         NUMERIC_T t = t0;
-        NUMERIC_T x = x0;
         NUMERIC_T dt = dt0;
+        NUMERIC_T x_next, x = x0;
+        NUMERIC_T h_star;
+
+        vector<y_t> y_k, y_k_next;
+        y_t y_star;
+
+        size_t i_star, i_star_next;
 
         vector<NUMERIC_T> xs({x0});
         vector<NUMERIC_T> ts({t0});
-
-        NUMERIC_T h_star;
-        vector<y_t> y_k;
-        y_t y_star;
-        size_t i_star;
-
-        NUMERIC_T x_next;
-        vector<y_t> y_k_next;
-        size_t i_star_next;
 
         // We need to take one time step to estimate dy_k/dt
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
@@ -133,6 +150,8 @@ public:
         }
         y_k = y_k_next;
         fmt::println("  estimated dydt is {:::.4e}", dydt_est);
+        fmt::println("  number of steps to optimum change is guessed to be {:d}",
+                     estimate_steps_without_gopt(t, dt, x, y_k, dydt_est, params));
         t += dt;
         x = x_next;
         xs.push_back(x);
@@ -199,13 +218,14 @@ public:
                                 vector<y_t> const &y0, vector<y_t> const &y1, params_t const &p)
     {
         NUMERIC_T t1 = t + dt;
+        int ydims = y0[0].rows();
         // y0 is each of the possible minima we are considering.
         // if we only consider one, y0 has only one item (this is the case with global optimization every step)
         Eigen::VectorX<NUMERIC_T> result(1 + y0.size() * y0[0].rows());
         result(0) = x0 - x1 + dt / 2 * (m_xprime.value(t1, x1, y1[i_star], p) + m_xprime.value(t, x0, y0[i_star], p));
         for (size_t i = 0; i < y0.size(); i++)
         {
-            result(Eigen::seqN(1 + i * y0[0].rows(), y0[0].rows())) = m_objective.grad_y(t1, x1, y1[i], p);
+            result(Eigen::seqN(1 + i * ydims, ydims)) = m_objective.grad_y(t1, x1, y1[i], p);
         }
         return result;
     }
