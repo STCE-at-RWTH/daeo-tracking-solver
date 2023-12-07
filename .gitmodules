@@ -1,0 +1,3 @@
+[submodule "interval"]
+	path = interval
+	url = git@github.com:aj-fleming/interval
