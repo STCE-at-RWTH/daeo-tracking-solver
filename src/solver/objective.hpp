@@ -81,10 +81,11 @@ public:
         using dco_mode_t = dco::gt1s<X_ACTIVE_T>;
         using active_t = dco_mode_t::type;
         active_t x_active;
+        active_t h_active;
         dco::value(x_active) = x;
         dco::derivative(x_active) = 1;
-        X_ACTIVE_T res = dco::derivative(m_fn(t, x, y, p));
-        return res;
+        h_active = m_fn(t, x_active, y, p);
+        return dco::derivative(h_active);
     }
 
     template <typename NUMERIC_T, typename Y_ACTIVE_T, int YDIMS, int PDIMS>
