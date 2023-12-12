@@ -10,7 +10,6 @@
 #include "solver/objective.hpp"
 #include "solver/settings.hpp"
 
-
 using std::vector;
 using namespace std::numbers;
 
@@ -34,7 +33,7 @@ int main(int argc, char **argv)
     {
         return -(p(0) + y(0)) * x;
     };
-    
+
     auto f_griewank = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
     {
         return y;
@@ -47,10 +46,8 @@ int main(int argc, char **argv)
 
     auto h_griewank = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
     {
-        return pow(x-y, 2) + sin(p(1)*y);
+        return pow(x - y, 2) + sin(p(1) * y);
     };
-
-    
 
     BNBSolverSettings<double> optimizer_settings;
     optimizer_settings.TOL_X = 1.0e-6;
@@ -80,9 +77,8 @@ int main(int argc, char **argv)
     {
         fmt::print("f(0, {:.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
     }
-
     solver_t solver(f, h, optimizer_settings, solver_settings);
     auto [t, x_path] = solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
-
+    
     return 0;
 }

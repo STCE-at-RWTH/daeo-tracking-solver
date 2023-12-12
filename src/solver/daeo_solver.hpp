@@ -103,9 +103,9 @@ public:
             for (size_t j = i + 1; j < dhdt.size(); j++)
             {
                 // compare each pair of minima
-                NUMERIC_T dist = abs(h_k[i] - h_k[j]);        // distance between
-                NUMERIC_T rate = abs(dhdt[i]) + abs(dhdt[j]); // maximum rate of decrease
-                size_t n = static_cast<size_t>(dist / rate);  // we want to truncate here!
+                NUMERIC_T dist = abs(h_k[i] - h_k[j]);              // distance between
+                NUMERIC_T rate = abs(dhdt[i]) + abs(dhdt[j]);       // maximum rate of decrease
+                size_t n = static_cast<size_t>((dist / rate / dt)); // we want to truncate here!
                 if (n < N_est)
                 {
                     N_est = n;
@@ -138,24 +138,6 @@ public:
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
         y_k = y_k_medians(bnb_results_0, t, x, params);
         std::tie(h_star, y_star, i_star) = find_optimum(y_k, t, x, params);
-        fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}", t, x, y_star, params, h_star);
-        fmt::println("    this occurs at index {:d}", i_star);
-        std::tie(x_next, y_k_next) = solve_G_is_zero(t, dt0, x, i_star, y_k, params);
-        fmt::println("  x_next is {:.4e}, y_next is {:::.4e}", x_next, y_k_next);
-
-        vector<y_t> dydt_est(y_k.size());
-        for (size_t i = 0; i < dydt_est.size(); i++)
-        {
-            dydt_est[i] = (y_k_next[i] - y_k[i]) / dt;
-        }
-        y_k = y_k_next;
-        fmt::println("  estimated dydt is {:::.4e}", dydt_est);
-        fmt::println("  number of steps to optimum change is guessed to be {:d}",
-                     estimate_steps_without_gopt(t, dt, x, y_k, dydt_est, params));
-        t += dt;
-        x = x_next;
-        xs.push_back(x);
-        ts.push_back(t);
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
         // even if they did, would it really matter? since we don't do any implicit function silliness
@@ -165,20 +147,30 @@ public:
         // solving for the values at the next time step.
         // This would trigger a search for minima of h(x, y) again, since we may have "lost" one
 
-        size_t iter = 1;
+        size_t iter = 0;
         size_t iterations_since_search = 0;
         while (t < t_end)
         {
-            std::tie(h_star, y_star, i_star_next) = find_optimum(y_k, t, x_next, params);
+            fmt::println("{:d} Optimum at h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}",
+                         iter, t, x, y_star, params, h_star);
+            fmt::println("    this occurs at index {:d}", i_star);
+            std::tie(x_next, y_k_next) = solve_G_is_zero(t, dt0, x, i_star, y_k, params);
+            fmt::println("  x_next is {:.4e}, y_next is {:::.4e}", x_next, y_k_next);
+            vector<y_t> dydt_est(y_k.size());
+            for (size_t i = 0; i < dydt_est.size(); i++)
+            {
+                dydt_est[i] = (y_k_next[i] - y_k[i]) / dt;
+            }
+            fmt::println("  estimated dydt is {:::.4e}", dydt_est);
+            fmt::println("  number of steps to optimum change is guessed to be {:d}",
+                         estimate_steps_without_gopt(t, dt, x, y_k_next, dydt_est, params));
+            std::tie(h_star, y_star, i_star_next) = find_optimum(y_k_next, t, x_next, params);
             if (i_star_next != i_star)
             {
-                fmt::println("  **EVENT OCCURRED IN ITERATION {:d}! WE MUST REWIND**", iter);
+                fmt::println("  **EVENT OCCURRED IN ITERATION {:d}! SOLVE EVENT FUNCTION HERE**", iter);
             }
             // after handling events, we can move on.
             i_star = i_star_next;
-            fmt::println("  Optimum is determined to be h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}", t, x, y_star, params, h_star);
-            std::tie(x_next, y_k_next) = solve_G_is_zero(t, dt, x, i_star, y_k, params);
-            fmt::println("  x_next is {:.4e}, y_next is {:::.4e}", x_next, y_k_next);
             t += dt;
             x = x_next;
             y_k = y_k_next;
@@ -288,6 +280,35 @@ public:
         }
 
         return {x_next, y_next};
+    }
+
+    /*
+        H and dHdt are used to find the precise event location by newton iteration.
+    */
+
+    /**
+     * @brief Event function between optima @c i1 (current optimum at (t, x))
+     *   and the candidate next optimum @c i2 at (t+dt, x(t+dt))
+     */
+    NUMERIC_T H(NUMERIC_T const t, NUMERIC_T const x,
+                size_t i1, size_t i2,
+                vector<y_t> const &y_k, params_t const &p)
+    {
+        return m_objective.value(t, x, y_k[i1], p) - m_objective.value(t, x, y_k[i2], p);
+    }
+
+    NUMERIC_T dHdt(NUMERIC_T const t, NUMERIC_T const x,
+                   size_t i1, size_t i2,
+                   vector<y_t> const &y_k, params_t const &p)
+    {
+        return 0;
+    }
+
+    NUMERIC_T solve_H_is_zero(NUMERIC_T const t, NUMERIC_T const dt,
+                              size_t const i1, size_t const i2,
+                              vector<y_t> const &y_k, params_t const &p)
+    {
+        return 0;
     }
 };
 
