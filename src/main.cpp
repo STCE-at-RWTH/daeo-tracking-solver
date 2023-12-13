@@ -56,7 +56,7 @@ int main(int argc, char **argv)
     optimizer_settings.MAX_REFINE_ITER = 20;
 
     DAEOSolverSettings<double> solver_settings;
-    solver_settings.TOL_T = 1.0e-6;
+    solver_settings.TOL_T = 1.0e-8;
     solver_settings.y0_min = -8.0;
     solver_settings.y0_max = 12.0;
 

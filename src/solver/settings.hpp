@@ -49,7 +49,7 @@ struct DAEOSolverSettings
 
     size_t SEARCH_FREQUENCY = 10;
     size_t MAX_NEWTON_ITERATIONS = 20;
-    NUMERIC_T NEWTON_EPS = 0.0001;
+    NUMERIC_T NEWTON_EPS = 1.0e-6;
     bool RUN_GLOBAL_OPT_AT_EVENTS = false;
 };
 

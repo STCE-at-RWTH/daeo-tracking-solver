@@ -164,16 +164,60 @@ public:
             fmt::println("  estimated dydt is {:::.4e}", dydt_est);
             fmt::println("  number of steps to optimum change is guessed to be {:d}",
                          estimate_steps_without_gopt(t, dt, x, y_k_next, dydt_est, params));
-            std::tie(h_star, y_star, i_star_next) = find_optimum(y_k_next, t, x_next, params);
+            std::tie(h_star, y_star, i_star_next) = find_optimum(y_k_next, t + dt, x_next, params);
             if (i_star_next != i_star)
             {
                 fmt::println("  **EVENT OCCURRED IN ITERATION {:d}! SOLVE EVENT FUNCTION HERE**", iter);
+                fmt::println("  **REWINDING TO t={:.2f}**", t);
+                // we should do this using the event function, but rewinding time is easier.
+                // declare some new variables for this bisection procedure
+                // we assume only one transversal event
+                NUMERIC_T t_split = t;
+                NUMERIC_T dt_split = dt / 2;
+                NUMERIC_T x_split, h_split;
+                vector<y_t> y_k_split;
+                y_t y_star_split;
+                size_t i_star_split;
+
+                while (dt_split > m_settings.TOL_T)
+                {
+                    // possible optimization here: reduce size of G by only choosing two yk
+                    std::tie(x_split, y_k_split) = solve_G_is_zero(t_split, dt_split, x, i_star, y_k, params);
+                    std::tie(h_split, y_star_split, i_star_split) = find_optimum(y_k_split, t_split + dt_split, x_split, params);
+                    NUMERIC_T H_split = H(t_split + dt_split, x_split, i_star, i_star_split, y_k_split, params);
+                    fmt::println("  t = {:.2f}, dt={:.4e}, x={:.4e}, H={:.6e}, i={:d}",
+                                 t_split, dt_split, x_split, H_split, i_star_split);
+                    if (fabs(H_split) <= std::numeric_limits<NUMERIC_T>::epsilon())
+                    {
+                        // exactly located event
+                        t_split += dt_split;
+                        break;
+                    }
+                    else if (H_split < 0)
+                    {
+                        // t+dt_split < t_event
+                        t_split += dt_split;
+                        dt_split = dt_split / 2;
+                    }
+                    else
+                    {
+                        // t+dt_split > t_event
+                        dt_split = dt_split / 2;
+                    }
+                }
+                x = x_split;
+                i_star = i_star_split;
+                y_k = y_k_split;
+                t = t_split;
             }
-            // after handling events, we can move on.
-            i_star = i_star_next;
-            t += dt;
-            x = x_next;
-            y_k = y_k_next;
+            else
+            {
+                // we don't need to handle events, we can move on.
+                i_star = i_star_next;
+                t += dt;
+                x = x_next;
+                y_k = y_k_next;
+            }
             xs.push_back(x);
             ts.push_back(t);
 
@@ -249,6 +293,9 @@ public:
         return result;
     }
 
+    /**
+     * @brief find @c x_next and @c y_k_next such that G(...) = 0 at t+dt.
+     */
     std::tuple<NUMERIC_T, vector<y_t>> solve_G_is_zero(NUMERIC_T const t, NUMERIC_T const dt,
                                                        NUMERIC_T const x, size_t i_star,
                                                        vector<y_t> const &y_k,
@@ -288,7 +335,13 @@ public:
 
     /**
      * @brief Event function between optima @c i1 (current optimum at (t, x))
-     *   and the candidate next optimum @c i2 at (t+dt, x(t+dt))
+     *   and the candidate next optimum @c i2 at (t, x)
+     * @param[in] t
+     * @param[in] x
+     * @param[in] i1 Index of the first local optimum in @c y_k
+     * @param[in] i2 Index of the second local optimum in @c y_k
+     * @param[in] y_k List of all local optima @c y_k
+     * @param[in] p Parameter vector.
      */
     NUMERIC_T H(NUMERIC_T const t, NUMERIC_T const x,
                 size_t i1, size_t i2,
