@@ -51,9 +51,9 @@ public:
     }
 
     // this needs to be somewhere else
-    std::tuple<NUMERIC_T, y_t, size_t> find_optimum(vector<y_t> const &y_k,
-                                                    NUMERIC_T const t, NUMERIC_T const x,
-                                                    params_t const &params)
+    std::tuple<y_t, size_t> find_optimum(vector<y_t> const &y_k,
+                                         NUMERIC_T const t, NUMERIC_T const x,
+                                         params_t const &params)
     {
         NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
         size_t i_star;
@@ -66,7 +66,7 @@ public:
                 i_star = i;
             }
         }
-        return {h_star, y_k[i_star], i_star};
+        return {y_k[i_star], i_star};
     }
 
     vector<y_t> y_k_medians(typename optimizer_t::results_t const &optres, NUMERIC_T const t,
@@ -75,11 +75,9 @@ public:
         vector<y_t> y_medians;
         for (auto &y_i : optres.minima_intervals)
         {
-            y_medians.emplace_back();
-            y_medians.back().resize(y_i.size());
-            std::transform(y_i.begin(), y_i.end(), y_medians.back().begin(),
-                           [](auto ival)
-                           { return median(ival); });
+            y_medians.emplace_back(y_i.size());
+            y_medians.back() = y_i.unaryExpr([](auto ival)
+                                             { return median(ival); });
         }
         return y_medians;
     }
@@ -126,7 +124,6 @@ public:
 
         vector<y_t> y_k, y_k_next;
         y_t y_star;
-
         size_t i_star, i_star_next;
 
         vector<NUMERIC_T> xs({x0});
@@ -137,7 +134,7 @@ public:
         typename optimizer_t::results_t bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
         y_k = y_k_medians(bnb_results_0, t, x, params);
-        std::tie(h_star, y_star, i_star) = find_optimum(y_k, t, x, params);
+        std::tie(y_star, i_star) = find_optimum(y_k, t, x, params);
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
         // even if they did, would it really matter? since we don't do any implicit function silliness
@@ -164,51 +161,19 @@ public:
             fmt::println("  estimated dydt is {:::.4e}", dydt_est);
             fmt::println("  number of steps to optimum change is guessed to be {:d}",
                          estimate_steps_without_gopt(t, dt, x, y_k_next, dydt_est, params));
-            std::tie(h_star, y_star, i_star_next) = find_optimum(y_k_next, t + dt, x_next, params);
-            if (i_star_next != i_star)
+            std::tie(y_star, i_star_next) = find_optimum(y_k_next, t + dt, x_next, params);
+            fmt::println("  event fn. value is {:.6e}", event_function(t + dt, x_next, i_star, i_star_next, y_k, params));
+            if ((i_star_next != i_star) &&
+                (event_function(t + dt, x_next, i_star, i_star_next, y_k, params) >= std::numeric_limits<NUMERIC_T>::epsilon()))
             {
                 fmt::println("  **EVENT OCCURRED IN ITERATION {:d}! SOLVE EVENT FUNCTION HERE**", iter);
-                fmt::println("  **REWINDING TO t={:.2f}**", t);
-                // we should do this using the event function, but rewinding time is easier.
-                // declare some new variables for this bisection procedure
-                // we assume only one transversal event
-                NUMERIC_T t_split = t;
-                NUMERIC_T dt_split = dt / 2;
-                NUMERIC_T x_split, h_split;
-                vector<y_t> y_k_split;
-                y_t y_star_split;
-                size_t i_star_split;
-
-                while (dt_split > m_settings.TOL_T)
-                {
-                    // possible optimization here: reduce size of G by only choosing two yk
-                    std::tie(x_split, y_k_split) = solve_G_is_zero(t_split, dt_split, x, i_star, y_k, params);
-                    std::tie(h_split, y_star_split, i_star_split) = find_optimum(y_k_split, t_split + dt_split, x_split, params);
-                    NUMERIC_T H_split = H(t_split + dt_split, x_split, i_star, i_star_split, y_k_split, params);
-                    fmt::println("  t = {:.2f}, dt={:.4e}, x={:.4e}, H={:.6e}, i={:d}",
-                                 t_split, dt_split, x_split, H_split, i_star_split);
-                    if (fabs(H_split) <= std::numeric_limits<NUMERIC_T>::epsilon())
-                    {
-                        // exactly located event
-                        t_split += dt_split;
-                        break;
-                    }
-                    else if (H_split < 0)
-                    {
-                        // t+dt_split < t_event
-                        t_split += dt_split;
-                        dt_split = dt_split / 2;
-                    }
-                    else
-                    {
-                        // t+dt_split > t_event
-                        dt_split = dt_split / 2;
-                    }
-                }
-                x = x_split;
-                i_star = i_star_split;
-                y_k = y_k_split;
-                t = t_split;
+                fmt::println("  **REWINDING TO t={:6e}**", t);
+                auto [t_event, x_event, y_event] = locate_event(t, dt, x, i_star, y_k, params);
+                std::tie(std::ignore, i_star) = find_optimum(y_event, t_event, x_event, params);
+                fmt::println("  Located Event at t={:.6e}, x={:.4e}, i*={:d}", t_event, x_event, i_star);
+                t = t_event;
+                y_k = y_event;
+                x = x_event;
             }
             else
             {
@@ -225,6 +190,55 @@ public:
             iterations_since_search++;
         }
         return {ts, xs};
+    }
+
+    /**
+     * @brief locate a global optimum change event in the interval [t, t+dt]
+     * @param[in] t
+     * @param[in] dt
+     * @param[in] x Value of x at time t
+     * @param[in] y_k List of local optima y_k at time t
+     * @param[in] params
+     */
+    std::tuple<NUMERIC_T, NUMERIC_T, vector<y_t>> locate_event(NUMERIC_T const t, NUMERIC_T const dt, NUMERIC_T const x,
+                                                               size_t const i_star, vector<y_t> const &y_k,
+                                                               params_t const &params)
+    {
+        // first, locate the event.
+        NUMERIC_T t_split = t;
+        NUMERIC_T dt_split = dt / 2;
+        NUMERIC_T x_split;
+        vector<y_t> y_k_split;
+        y_t y_star_split;
+        size_t i_star_split;
+
+        while (dt_split > m_settings.TOL_T)
+        {
+            // possible optimization here: reduce size of G by only choosing two yk
+            std::tie(x_split, y_k_split) = solve_G_is_zero(t_split, dt_split, x, i_star, y_k, params);
+            std::tie(y_star_split, i_star_split) = find_optimum(y_k_split, t_split + dt_split, x_split, params);
+            NUMERIC_T H_split = event_function(t_split + dt_split, x_split, i_star, i_star_split, y_k_split, params);
+            fmt::println("  t = {:.6e}, dt={:.4e}, x={:.4e}, H={:.6e}, i={:d}",
+                         t_split, dt_split, x_split, H_split, i_star_split);
+            if (fabs(H_split) <= std::numeric_limits<NUMERIC_T>::epsilon())
+            {
+                // exactly located event
+                t_split += dt_split;
+                break;
+            }
+            else if (H_split < 0)
+            {
+                // t+dt_split < t_event
+                t_split += dt_split;
+                dt_split = dt_split / 2;
+            }
+            else
+            {
+                // t+dt_split > t_event
+                dt_split = dt_split / 2;
+            }
+        }
+        return {t_split, x_split, y_k_split};
     }
 
     /*
@@ -343,25 +357,11 @@ public:
      * @param[in] y_k List of all local optima @c y_k
      * @param[in] p Parameter vector.
      */
-    NUMERIC_T H(NUMERIC_T const t, NUMERIC_T const x,
-                size_t i1, size_t i2,
-                vector<y_t> const &y_k, params_t const &p)
+    NUMERIC_T event_function(NUMERIC_T const t, NUMERIC_T const x,
+                             size_t i1, size_t i2,
+                             vector<y_t> const &y_k, params_t const &p)
     {
         return m_objective.value(t, x, y_k[i1], p) - m_objective.value(t, x, y_k[i2], p);
-    }
-
-    NUMERIC_T dHdt(NUMERIC_T const t, NUMERIC_T const x,
-                   size_t i1, size_t i2,
-                   vector<y_t> const &y_k, params_t const &p)
-    {
-        return 0;
-    }
-
-    NUMERIC_T solve_H_is_zero(NUMERIC_T const t, NUMERIC_T const dt,
-                              size_t const i1, size_t const i2,
-                              vector<y_t> const &y_k, params_t const &p)
-    {
-        return 0;
     }
 };
 

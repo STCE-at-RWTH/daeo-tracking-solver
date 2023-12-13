@@ -72,6 +72,7 @@ int main(int argc, char **argv)
     optimizer_t optimizer(h, optimizer_settings);
     optimizer.set_search_domain(y0);
     auto results = optimizer.find_minima_at(0, x0, p, true);
+    fmt::println("double epsilon is {:.6e}", std::numeric_limits<double>::epsilon());
     fmt::print("Found {} minima:\n", results.minima_intervals.size());
     for (auto &y_argmin : results.minima_intervals)
     {
