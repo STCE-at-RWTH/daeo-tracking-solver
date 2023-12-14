@@ -19,6 +19,7 @@
 #include "fmt/ranges.h"
 
 #include "objective.hpp"
+#include "logging.hpp"
 #include "settings.hpp"
 #include "utils/fmt_extensions.hpp"
 #include "utils/sylvesters_criterion.hpp"

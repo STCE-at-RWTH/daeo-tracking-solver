@@ -9,6 +9,7 @@
 #include "solver/local_optima_solver.hpp"
 #include "solver/objective.hpp"
 #include "solver/settings.hpp"
+#include "solver/logging.hpp"
 
 using std::vector;
 using namespace std::numbers;
@@ -80,6 +81,6 @@ int main(int argc, char **argv)
     }
     solver_t solver(f, h, optimizer_settings, solver_settings);
     auto [t, x_path] = solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
-    
+
     return 0;
 }
