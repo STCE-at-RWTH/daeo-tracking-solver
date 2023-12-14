@@ -91,10 +91,6 @@ public:
      * @brief The objective function h(t, x, y; p) of which to find the minima.
      */
     DAEOWrappedFunction<OBJECTIVE_T> const m_objective;
-
-    /**
-     * @brief
-     */
     BNBSolverSettings<NUMERIC_T> const m_settings;
 
     /**
@@ -116,22 +112,29 @@ public:
                          BNBSolverSettings<NUMERIC_T> const &t_settings)
         : m_objective{t_objective}, m_settings{t_settings}, m_log_name{"bnb_log"} {}
 
-    void set_search_domain(y_interval_t y)
+    void set_search_domain(y_t lower_left, y_t upper_right)
     {
-        m_workq.push(y);
+        y_interval_t val(lower_left.rows());
+        for (int i = 0; i < val.rows(); i++)
+        {
+            val[i] = interval_t(lower_left(i), upper_right(i));
+        }
+        m_workq.push(val);
     }
 
     /**
-     * @brief Find minima in @c y of @c h(t,x,y;p) using the set search domain.
+     * @brief Find minima in @c y of @c h(t,x,y;p) using the set search domain. Clears internal work queue.
      * @param[in] t
      * @param[in] x
      * @param[in] params
+     * @param[in] only_global Should only the global maximum be found?
      * @param[in] logging Should a log file be written? Default @c false
      * @returns Solver results struct.
      */
     results_t find_minima_at(NUMERIC_T t,
                              NUMERIC_T x,
                              params_t const &params,
+                             bool const only_global,
                              bool logging = false)
     {
         if (m_workq.empty())
@@ -139,24 +142,28 @@ public:
             results_t r;
             return r;
         }
-
         size_t i = 0;
         BNBSolverLogger logger(m_workq.front().size(), params.size(), std::string(DATA_OUTPUT_DIR) + "/" + m_log_name);
         auto comp_start = std::chrono::high_resolution_clock::now();
-        logger.log_computation_begin(i, comp_start, m_workq.front());
-
+        if (logging)
+        {
+            logger.log_computation_begin(i, comp_start, m_workq.front());
+        }
         results_t sresults;
         while (!m_workq.empty() && i < m_settings.MAXITER)
         {
-            //std::cout << "Iteration: " << i++ << std::endl;
+            // std::cout << "Iteration: " << i++ << std::endl;
             y_interval_t y_i(m_workq.front());
             m_workq.pop();
-            process_interval(i, t, x, y_i, params, sresults, logger, logging);
-            //std::cout << "there are still " << m_workq.size() << " things to do" << std::endl;
+            process_interval(i, t, x, y_i, params, sresults, only_global, logger, logging);
+            // std::cout << "there are still " << m_workq.size() << " things to do" << std::endl;
         }
 
         auto comp_end = std::chrono::high_resolution_clock::now();
-        logger.log_computation_end(i, comp_end, sresults.minima_intervals.size());
+        if (logging)
+        {
+            logger.log_computation_end(i, comp_end, sresults.minima_intervals.size());
+        }
         m_workq = {};
 
         return sresults;
@@ -171,6 +178,7 @@ private:
      * @param[in] y
      * @param[in] params
      * @param[inout] sresults reference to the global solver status
+     * @param[in] only_global only find the global optimum?
      * @param[in] logger
      * @param[in] logging
      * @details
@@ -181,6 +189,7 @@ private:
                           y_interval_t const &y_i,
                           params_t const &params,
                           results_t &sresults,
+                          bool only_global,
                           BNBSolverLogger &logger,
                           bool logging)
     {
@@ -191,6 +200,7 @@ private:
             logger.log_task_begin(tasknum, clock::now(), y_i);
         }
 
+        // convergence test
         vector<bool> dims_converged(y_i.rows(), true);
         bool allconverged = true;
         for (int k = 0; k < y_i.rows(); k++)
@@ -200,12 +210,25 @@ private:
         }
         result_code = result_code | (allconverged ? CONVERGENCE_TEST_PASS : 0);
 
+        // value test
         interval_t h(m_objective.value(t, x, y_i, params));
+        if (sresults.optima_upper_bound <= h.lower())
+        { // if lower end of interval larger than possible lower bound...
+            result_code = result_code | VALUE_TEST_FAIL;
+        }
+        else
+        {
+            result_code = result_code | VALUE_TEST_PASS;
+            sresults.optima_upper_bound = h.upper();
+        }
+
+        // first derivative test
         y_interval_t dhdy(m_objective.grad_y(t, x, y_i, params));
         bool grad_pass = std::all_of(dhdy.begin(), dhdy.end(), [](interval_t ival)
                                      { return boost::numeric::zero_in(ival); });
         result_code = result_code | (grad_pass ? GRADIENT_TEST_PASS : GRADIENT_TEST_FAIL);
 
+        // second derivative test
         y_hessian_interval_t d2hdy2(m_objective.hess_y(t, x, y_i, params));
         if (is_positive_definite(d2hdy2))
         {
@@ -220,8 +243,16 @@ private:
             result_code = result_code | HESSIAN_MAYBE_INDEFINITE;
         }
 
-        // logger.log_all_tests(tasknum, clock::now(), result_code, y_i, h, dhdy, d2hdy2, dims_converged);
-        if ((result_code & GRADIENT_TEST_FAIL) | (result_code & HESSIAN_NEGATIVE_DEFINITE))
+        // take actions based upon test results.
+        logger.log_all_tests(tasknum, clock::now(), result_code, y_i, h, dhdy, d2hdy2.rowwise(), dims_converged);
+        if ((result_code & VALUE_TEST_FAIL) && only_global)
+        {
+            if (logging)
+            {
+                logger.log_task_complete(tasknum, clock::now(), y_i, result_code);
+            }
+        }
+        else if ((result_code & GRADIENT_TEST_FAIL) | (result_code & HESSIAN_NEGATIVE_DEFINITE))
         {
             // gradient test OR hessian test failed
             if (logging)
@@ -233,12 +264,20 @@ private:
         {
             // hessian test passed!
             // hessian is SPD -> h(x) on interval is convex
-            auto y_res = narrow_via_bisection(t, x, y_i, params, dims_converged);
+            y_interval_t y_res = narrow_via_bisection(t, x, y_i, params, dims_converged);
+            // need to perform value test again with narrowed interval.
+            interval_t h_res = m_objective.value(t, x, y_res, params);
+            if (h_res.lower() > sresults.optima_upper_bound){
+                result_code = result_code | VALUE_TEST_FAIL;
+            }else{
+                sresults.optima_upper_bound = h_res.upper();
+                sresults.minima_intervals.push_back(y_res);
+            }
             if (logging)
             {
                 logger.log_task_complete(tasknum, clock::now(), y_i, CONVERGENCE_TEST_PASS | result_code);
             }
-            sresults.minima_intervals.push_back(y_res);
+            
         }
         else if (result_code & CONVERGENCE_TEST_PASS)
         {
@@ -268,7 +307,7 @@ private:
     }
 
     /**
-     * @brief Cuts the n-dimensional range @c x in each dimension that is not flagged in @c dims_converged
+     * @brief Bisects the n-dimensional range @c x in each dimension that is not flagged in @c dims_converged
      * @returns @c vector of n-dimensional intervals post-split
      */
     vector<y_interval_t> bisect_interval(y_interval_t const &y, vector<bool> const &dims_converged)
@@ -300,7 +339,7 @@ private:
                 res.back()(i).assign(m, res.back()(i).upper());
             }
         }
-        //fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
+        // fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
         return res;
     }
 
@@ -308,7 +347,7 @@ private:
      * @brief Shrink an interval via bisection.
      */
     y_interval_t narrow_via_bisection(NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_in,
-                                      params_t const &params, vector<bool> dimsconverged)
+                                      params_t const &params, vector<bool> &dimsconverged)
     {
         y_interval_t y(y_in);
         y_t y_m(y.rows());

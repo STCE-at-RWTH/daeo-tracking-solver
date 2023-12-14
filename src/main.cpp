@@ -67,20 +67,21 @@ int main(int argc, char **argv)
                                              NUM_Y_DIMS, NUM_PARAMS>;
     using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
 
-    optimizer_t::y_interval_t y0(optimizer_t::interval_t{-8.0, 12.0});
+    optimizer_t::y_t yll {-8.0};
+    optimizer_t::y_t yur {12.0};
     optimizer_t::params_t p(2.0, 1.0, 0.5, pi / 2);
 
     optimizer_t optimizer(h, optimizer_settings);
-    optimizer.set_search_domain(y0);
-    auto results = optimizer.find_minima_at(0, x0, p, true);
+    optimizer.set_search_domain(yll, yur);
+    auto results = optimizer.find_minima_at(0, x0, p, true, true);
     fmt::println("double epsilon is {:.6e}", std::numeric_limits<double>::epsilon());
     fmt::print("Found {} minima:\n", results.minima_intervals.size());
     for (auto &y_argmin : results.minima_intervals)
     {
         fmt::print("f(0, {:.4e}, {::.4e}, {::.2e}) = {:.4e}\n", x0, y_argmin, p, h(0, x0, y_argmin, p));
     }
-    solver_t solver(f, h, optimizer_settings, solver_settings);
-    auto [t, x_path] = solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
+    //solver_t solver(f, h, optimizer_settings, solver_settings);
+    //auto [t, x_path] = solver.solve_daeo(0.0, 1.0, 0.01, 1.0, p);
 
     return 0;
 }

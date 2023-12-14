@@ -1,6 +1,6 @@
 /**
- * 
-*/
+ *
+ */
 #ifndef _SOLVER_LOGGING_HPP
 #define _SOLVER_LOGGING_HPP
 
@@ -25,6 +25,7 @@ enum BNBEventCodes
     COMPUTATION_COMPLETE,
     TASK_BEGIN,
     TASK_COMPLETE,
+    VALUE_TEST,
     CONVERGENCE_TEST,
     GRADIENT_TEST,
     HESSIAN_TEST,
@@ -36,11 +37,13 @@ auto format_as(BNBEventCodes evc) { return fmt::underlying(evc); }
 enum TestResultCode
 {
     CONVERGENCE_TEST_PASS = 1,
-    GRADIENT_TEST_FAIL = 2,
-    GRADIENT_TEST_PASS = 4,
-    HESSIAN_NEGATIVE_DEFINITE = 8,
-    HESSIAN_MAYBE_INDEFINITE = 16,
-    HESSIAN_POSITIVE_DEFINITE = 32
+    VALUE_TEST_FAIL = 2,
+    VALUE_TEST_PASS = 4,
+    GRADIENT_TEST_FAIL = 8,
+    GRADIENT_TEST_PASS = 16,
+    HESSIAN_NEGATIVE_DEFINITE = 32,
+    HESSIAN_MAYBE_INDEFINITE = 64,
+    HESSIAN_POSITIVE_DEFINITE = 128
 };
 
 auto format_as(TestResultCode evc) { return fmt::underlying(evc); }
@@ -67,7 +70,7 @@ public:
     BNBSolverLogger(size_t t_dims, size_t t_params, std::string const &filename)
         : m_dims{t_dims}, m_params{t_params}, m_threadcount{1}
     {
-        outs.emplace_back(fmt::format("{}_thread_0.csv", filename));
+        outs.emplace_back(fmt::format("{}_thread_0.tsv", filename));
         outs[0] << BNB_LOG_COLUMN_NAMES << "\n";
     };
 
@@ -76,7 +79,7 @@ public:
     {
         for (size_t i = 0; i < m_threadcount; i++)
         {
-            outs.emplace_back(fmt::format("{}_thread_{:d}.csv", filename, i));
+            outs.emplace_back(fmt::format("{}_thread_{:d}.tsv", filename, i));
             outs[i] << BNB_LOG_COLUMN_NAMES << "\n";
         }
     };
@@ -134,22 +137,25 @@ public:
 
     template <typename T, std::ranges::range Y, std::ranges::range DHDY>
     void log_gradient_test(size_t tasknum, sys_time_point_t time,
-                           Y const &x, T const &h,
-                           DHDY const &dhdx, size_t threadid = 0)
+                           Y const &y, T const &h,
+                           DHDY const &dhdy, size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, GRADIENT_TEST, 0);
-        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, x);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
-        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdx);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdy);
         fmt::print(outs[threadid], "None\tNone\n");
     }
 
-    template <typename T, std::ranges::range Y, std::ranges::range DHDY, typename DDHDDY>
+    /**
+     * Log the result of the Hessian test.
+    */
+    template <typename T, std::ranges::range Y, std::ranges::range DHDY, std::ranges::range DDHDDY_ROWS>
     void log_hessian_test(size_t tasknum, sys_time_point_t time,
                           TestResultCode testres,
                           Y const &y, T const &h,
-                          DHDY const &dhdy, DDHDDY &ddhddy,
+                          DHDY const &dhdy, DDHDDY_ROWS &d2hdy2,
                           size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
@@ -157,24 +163,27 @@ public:
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdy);
-        fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, ddhddy);
+        fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, d2hdy2);
         fmt::print(outs[threadid], "None\n");
     }
 
-    template <typename T, std::ranges::range Y, std::ranges::range DHDY, std::ranges::range DDHDYY_COLS>
+    /**
+     * @brief Log results from all tests. Pass the Hessian as an iterator of rows via (...).rowwise().
+    */
+    template <typename T, std::ranges::range Y, std::ranges::range DHDY, std::ranges::range DDHDYY_ROWS>
     void log_all_tests(size_t tasknum, sys_time_point_t time,
                        size_t combined_results,
-                       T const &x, T const &h,
-                       DHDY const &dhdx, DDHDYY_COLS &ddhdxx,
+                       Y const &y, T const &h,
+                       DHDY const &dhdy, DDHDYY_ROWS const &d2hdy2,
                        vector<bool> const &convergence,
                        size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, ALL_TESTS, combined_results);
-        fmt::print(outs[threadid], LOG_NUMERIC_VAL, x);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
-        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdx);
-        fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, ddhdxx);
+        fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdy);
+        fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, d2hdy2);
         fmt::print(outs[threadid], "{::d}\n", convergence);
     }
 };
