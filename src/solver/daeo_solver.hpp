@@ -6,6 +6,7 @@
 #define _DAEO_SOLVER_HPP
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 #include <tuple>
 #include <vector>
@@ -19,7 +20,6 @@
 #include "settings.hpp"
 #include "local_optima_solver.hpp"
 #include "utils/fmt_extensions.hpp"
-#include "utils/propagate_dynamic.hpp"
 
 using boost::numeric::median;
 using std::vector;
@@ -28,26 +28,28 @@ template <typename XPRIME, typename OBJECTIVE, typename NUMERIC_T, int YDIMS, in
 class DAEOTrackingSolver
 {
 public:
-    using optimizer_t = LocalOptimaBNBSolver<OBJECTIVE, NUMERIC_T, suggested_solver_policies<NUMERIC_T>, YDIMS, NPARAMS>;
+    using optimizer_t = BNBLocalOptimizer<OBJECTIVE, NUMERIC_T, suggested_solver_policies<NUMERIC_T>, YDIMS, NPARAMS>;
     using y_t = optimizer_t::y_t;
     using y_hessian_t = optimizer_t::y_hessian_t;
     using params_t = optimizer_t::params_t;
     using interval_t = optimizer_t::interval_t;
 
+    DAEOSolverSettings<NUMERIC_T> settings;
+
 private:
     DAEOWrappedFunction<XPRIME> const m_xprime;
     DAEOWrappedFunction<OBJECTIVE> const m_objective;
     optimizer_t m_optimizer;
-    DAEOSolverSettings<NUMERIC_T> m_settings;
 
 public:
     DAEOTrackingSolver(XPRIME const &t_xprime, OBJECTIVE const &t_objective,
-                       BNBSolverSettings<NUMERIC_T> &t_opt_settings,
+                       BNBOptimizerSettings<NUMERIC_T> &t_opt_settings,
                        DAEOSolverSettings<NUMERIC_T> &t_global_settings)
-        : m_xprime(t_xprime), m_objective(t_objective),
-          m_optimizer(t_objective, t_opt_settings), m_settings(t_global_settings)
+        : settings(t_global_settings), m_xprime(t_xprime), m_objective(t_objective),
+          m_optimizer(t_objective, t_opt_settings)
+
     {
-        m_optimizer.set_search_domain(typename optimizer_t::y_interval_t(interval_t{m_settings.y0_min, m_settings.y0_max}));
+        m_optimizer.set_search_domain(y_t{settings.y0_min}, y_t{settings.y0_max});
     }
 
     // this needs to be somewhere else
@@ -115,10 +117,10 @@ public:
 
     std::tuple<vector<NUMERIC_T>, vector<NUMERIC_T>> solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
                                                                 NUMERIC_T const dt0, NUMERIC_T const x0,
-                                                                params_t const &params)
+                                                                params_t const &params, std::string tag = "")
     {
-        NUMERIC_T t = t0;
-        NUMERIC_T dt = dt0;
+        using clock = std::chrono::high_resolution_clock;
+        NUMERIC_T t = t0, dt = dt0;
         NUMERIC_T x_next, x = x0;
         NUMERIC_T h_star;
 
@@ -129,17 +131,27 @@ public:
         vector<NUMERIC_T> xs({x0});
         vector<NUMERIC_T> ts({t0});
 
+        DAEOSolverLogger logger(tag);
+        if (settings.LOGGING_ENABLED)
+        {
+            logger.log_computation_begin(clock::now(), 0, t, dt, x);
+        }
+
         // We need to take one time step to estimate dy_k/dt
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
-        typename optimizer_t::results_t bnb_results_0 = m_optimizer.find_minima_at(t, x, params, true);
-        fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", bnb_results_0.minima_intervals);
-        y_k = y_k_medians(bnb_results_0, t, x, params);
+        typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(t, x, params, false);
+
+        fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", opt_res.minima_intervals);
+        y_k = y_k_medians(opt_res, t, x, params);
         std::tie(y_star, i_star) = find_optimum(y_k, t, x, params);
+        if (settings.LOGGING_ENABLED)
+        {
+            logger.log_global_optimization(clock::now(), 0, t, x, y_k, i_star);
+        }
 
         // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
         // even if they did, would it really matter? since we don't do any implicit function silliness
         // we probably wouldn't even be able to tell if this did happen
-
         // it may be beneficial to periodically check all of the y_is and see if they're close to each other before and after
         // solving for the values at the next time step.
         // This would trigger a search for minima of h(x, y) again, since we may have "lost" one
@@ -153,14 +165,10 @@ public:
             fmt::println("    this occurs at index {:d}", i_star);
             std::tie(x_next, y_k_next) = solve_G_is_zero(t, dt0, x, i_star, y_k, params);
             fmt::println("  x_next is {:.4e}, y_next is {:::.4e}", x_next, y_k_next);
-            vector<y_t> dydt_est(y_k.size());
-            for (size_t i = 0; i < dydt_est.size(); i++)
-            {
-                dydt_est[i] = (y_k_next[i] - y_k[i]) / dt;
-            }
-            fmt::println("  estimated dydt is {:::.4e}", dydt_est);
+            vector<y_t> dydt(estimate_dydt(dt, y_k, y_k_next));
+            fmt::println("  estimated dydt is {:::.4e}", dydt);
             fmt::println("  number of steps to optimum change is guessed to be {:d}",
-                         estimate_steps_without_gopt(t, dt, x, y_k_next, dydt_est, params));
+                         estimate_steps_without_gopt(t, dt, x, y_k_next, dydt, params));
             std::tie(y_star, i_star_next) = find_optimum(y_k_next, t + dt, x_next, params);
             fmt::println("  event fn. value is {:.6e}", event_function(t + dt, x_next, i_star, i_star_next, y_k, params));
             if ((i_star_next != i_star) &&
@@ -168,16 +176,26 @@ public:
             {
                 fmt::println("  **EVENT OCCURRED IN ITERATION {:d}! SOLVE EVENT FUNCTION HERE**", iter);
                 fmt::println("  **REWINDING TO t={:6e}**", t);
-                auto [t_event, x_event, y_event] = locate_event(t, dt, x, i_star, y_k, params);
+                auto [t_event, x_event, i_star_event, y_event] = locate_event(t, dt, x, i_star, y_k, params);
+                dydt = estimate_dydt(dt, y_k, y_event);
                 std::tie(std::ignore, i_star) = find_optimum(y_event, t_event, x_event, params);
                 fmt::println("  Located Event at t={:.6e}, x={:.4e}, i*={:d}", t_event, x_event, i_star);
+                if (settings.LOGGING_ENABLED)
+                {
+                    logger.log_event_correction(clock::now(), iter, t, t_event - t, x, x_event - x, y_k, dydt, i_star);
+                }
                 t = t_event;
                 y_k = y_event;
                 x = x_event;
+                i_star = i_star_event;
             }
             else
             {
                 // we don't need to handle events, we can move on.
+                if (settings.LOGGING_ENABLED)
+                {
+                    logger.log_time_step(clock::now(), iter, t, dt, x, x_next - x, y_k, dydt, i_star);
+                }
                 i_star = i_star_next;
                 t += dt;
                 x = x_next;
@@ -189,7 +207,21 @@ public:
             iter++;
             iterations_since_search++;
         }
+        if (settings.LOGGING_ENABLED)
+        {
+            logger.log_computation_end(clock::now(), iter, t, x, y_k, i_star);
+        }
         return {ts, xs};
+    }
+
+    vector<y_t> estimate_dydt(NUMERIC_T dt, vector<y_t> const &y, vector<y_t> const &y_next)
+    {
+        vector<y_t> dydt(y.size());
+        for (size_t i = 0; i < y.size(); i++)
+        {
+            dydt[i] = (y_next[i] - y[i]) / dt;
+        }
+        return dydt;
     }
 
     /**
@@ -200,9 +232,9 @@ public:
      * @param[in] y_k List of local optima y_k at time t
      * @param[in] params
      */
-    std::tuple<NUMERIC_T, NUMERIC_T, vector<y_t>> locate_event(NUMERIC_T const t, NUMERIC_T const dt, NUMERIC_T const x,
-                                                               size_t const i_star, vector<y_t> const &y_k,
-                                                               params_t const &params)
+    std::tuple<NUMERIC_T, NUMERIC_T, size_t, vector<y_t>> locate_event(NUMERIC_T const t, NUMERIC_T const dt,
+                                                                       NUMERIC_T const x, size_t const i_star,
+                                                                       vector<y_t> const &y_k, params_t const &params)
     {
         // first, locate the event.
         NUMERIC_T t_split = t;
@@ -212,7 +244,7 @@ public:
         y_t y_star_split;
         size_t i_star_split;
 
-        while (dt_split > m_settings.TOL_T)
+        while (dt_split > settings.TOL_T)
         {
             // possible optimization here: reduce size of G by only choosing two yk
             std::tie(x_split, y_k_split) = solve_G_is_zero(t_split, dt_split, x, i_star, y_k, params);
@@ -238,7 +270,7 @@ public:
                 dt_split = dt_split / 2;
             }
         }
-        return {t_split, x_split, y_k_split};
+        return {t_split, x_split, i_star_split, y_k_split};
     }
 
     /*
@@ -323,7 +355,7 @@ public:
         Eigen::VectorX<NUMERIC_T> diff(temp_dims);
         Eigen::MatrixX<NUMERIC_T> delg_temp(temp_dims, temp_dims);
 
-        while (iter < m_settings.MAX_NEWTON_ITERATIONS)
+        while (iter < settings.MAX_NEWTON_ITERATIONS)
         {
             g_temp = G(t, dt, x, x_next, i_star, y_k, y_next, p);
             delg_temp = delG(t + dt, dt, x_next, i_star, y_next, p);
@@ -333,7 +365,7 @@ public:
             {
                 y_next[i] = y_next[i] - diff(Eigen::seqN(1 + i * y_k[0].rows(), y_k[0].rows()));
             }
-            if (diff.norm() < m_settings.NEWTON_EPS)
+            if (diff.norm() < settings.NEWTON_EPS)
             {
                 break;
             }

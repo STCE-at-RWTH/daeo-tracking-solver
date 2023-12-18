@@ -22,13 +22,15 @@ using suggested_solver_policies = boost::numeric::interval_lib::policies<
     boost::numeric::interval_lib::checking_base<T>>;
 
 template <typename NUMERIC_T>
-struct BNBSolverSettings
+struct BNBOptimizerSettings
 {
     NUMERIC_T TOL_X;
     NUMERIC_T TOL_Y;
 
     std::size_t MAXITER = 100;
     std::size_t MAX_REFINE_ITER = 4;
+
+    bool LOGGING_ENABLED = true;
 };
 
 template <typename NUMERIC_T>
@@ -42,7 +44,9 @@ struct DAEOSolverSettings
     size_t SEARCH_FREQUENCY = 10;
     size_t MAX_NEWTON_ITERATIONS = 20;
     NUMERIC_T NEWTON_EPS = 1.0e-6;
+
     bool RUN_GLOBAL_OPT_AT_EVENTS = false;
+    bool LOGGING_ENABLED = true;
 };
 
 #endif
