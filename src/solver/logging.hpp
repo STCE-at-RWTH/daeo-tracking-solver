@@ -223,7 +223,7 @@ public:
     void log_computation_begin(sys_time_point_t const time, size_t const iter, T const t0, T const dt0, T const x0)
     {
         m_logging_start = time;
-        fmt::print(out, LOG_TNUM_TSTAMP, iter, time);
+        fmt::print(out, LOG_TNUM_TSTAMP, iter, time-m_logging_start);
         fmt::print(out, LOG_EID_EXTRA, SOLVER_BEGIN, 0);
         fmt::print(out, LOG_NUMERIC_VAL, t0);
         fmt::print(out, LOG_NUMERIC_VAL, dt0);
