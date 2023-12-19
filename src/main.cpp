@@ -15,8 +15,8 @@ using std::vector;
 using namespace std::numbers;
 
 template <typename T>
-using boost_interval_transc_t = boost::numeric::interval<
-    T, suggested_solver_policies<T>>;
+using boost_interval_transc_t =
+    boost::numeric::interval<T, suggested_solver_policies<T>>;
 using double_ival = boost_interval_transc_t<double>;
 
 constexpr int NUM_Y_DIMS = 1;
@@ -34,12 +34,18 @@ void run_simple_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<T>
     {
         return pow(p(1) - pow(y(0), 2), 2) - (x - p(2)) * sin(y(0) * p(3));
     };
-    //using optimizer_t = BNBLocalOptimizer<decltype(h), double, suggested_solver_policies<double>, NUM_Y_DIMS, NUM_PARAMS>;
+
+    // using optimizer_t = BNBLocalOptimizer<decltype(h), double, suggested_solver_policies<double>, NUM_Y_DIMS, NUM_PARAMS>;
     using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
     typename solver_t::params_t p(2.0, 1.0, 0.5, pi / 2);
+    
 
-    solver_t solver(f, h, optimizer_s, solver_s);
-    solver.solve_daeo(0, 1, 0.05, 1.0, p, "simple_example");
+    for (int i = 0; i < 7; i++)
+    {
+        double dt = pow(10.0, -i);
+        solver_t solver(f, h, optimizer_s, solver_s);
+        solver.solve_daeo(0, 1, dt, 1.0, p, fmt::format("simple_example_10_minus_{:d}", i));
+    }
 }
 
 template <typename T>
@@ -55,7 +61,7 @@ void run_griewank_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<
         return pow(x - y(0), 2) + sin(p(0) * y(0));
     };
 
-    //using optimizer_t = BNBLocalOptimizer<decltype(h), T, suggested_solver_policies<T>, NUM_Y_DIMS, NUM_PARAMS>;
+    // using optimizer_t = BNBLocalOptimizer<decltype(h), T, suggested_solver_policies<T>, NUM_Y_DIMS, NUM_PARAMS>;
     using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
     typename solver_t::params_t p(5.0);
 
@@ -81,6 +87,7 @@ int main(int argc, char **argv)
 
     DAEOSolverSettings<double> solver_settings;
     solver_settings.TOL_T = 1.0e-8;
+    solver_settings.NEWTON_EPS = 1.0e-8;
     solver_settings.y0_min = -8.0;
     solver_settings.y0_max = 12.0;
 

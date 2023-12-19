@@ -2,4 +2,10 @@
 build
 .vscode
 
+# ipython directories
 .ipynb_checkpoints
+__pycache__
+
+# generated directories
+gfx
+data

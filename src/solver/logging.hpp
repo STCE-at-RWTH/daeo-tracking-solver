@@ -201,7 +201,7 @@ enum SolverEventCode
 auto format_as(SolverEventCode evc) { return fmt::underlying(evc); }
 
 constexpr char SOLVER_LOG_COLUMNS[]{"ITERATION\tTSTAMP\tEVENTID\tEXTRACODE\tT\tDT\tX\tDXDT\tY\tDYDT_EST\tISTAR"};
-constexpr char LOG_INTEGER_VAL[]{"{:d}\t"};
+constexpr char LOG_INTEGER_VAL[]{"{:d}"};
 
 class DAEOSolverLogger
 {
@@ -229,7 +229,7 @@ public:
         fmt::print(out, LOG_NUMERIC_VAL, dt0);
         fmt::print(out, LOG_NUMERIC_VAL, x0);
         // no dx, no y, no dy, no i_star
-        fmt::print(out, "None\tNone\tNone\tNone\n");
+        fmt::print(out, "None\tNone\tNone\t0\n");
     }
 
     template <typename T, std::ranges::range Y>
