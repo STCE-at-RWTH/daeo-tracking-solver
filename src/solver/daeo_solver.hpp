@@ -13,13 +13,13 @@
 
 #include "boost/numeric/interval.hpp"
 #include "Eigen/Dense"
-#include "dco.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 
 #include "settings.hpp"
 #include "local_optima_solver.hpp"
 #include "utils/fmt_extensions.hpp"
+#include "utils/ntuple.hpp"
 
 using boost::numeric::median;
 using std::vector;
@@ -53,9 +53,9 @@ public:
     }
 
     // this needs to be somewhere else
-    std::tuple<y_t, size_t> find_optimum(vector<y_t> const &y_k,
-                                         NUMERIC_T const t, NUMERIC_T const x,
-                                         params_t const &params)
+    size_t find_optimum(vector<y_t> const &y_k,
+                        NUMERIC_T const t, NUMERIC_T const x,
+                        params_t const &params)
     {
         NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
         size_t i_star;
@@ -68,7 +68,7 @@ public:
                 i_star = i;
             }
         }
-        return {y_k[i_star], i_star};
+        return i_star;
     }
 
     vector<y_t> y_k_medians(typename optimizer_t::results_t const &optres, NUMERIC_T const t,
@@ -82,6 +82,16 @@ public:
                                              { return median(ival); });
         }
         return y_medians;
+    }
+
+    vector<y_t> estimate_dydt(NUMERIC_T dt, vector<y_t> const &y, vector<y_t> const &y_next)
+    {
+        vector<y_t> dydt(y.size());
+        for (size_t i = 0; i < y.size(); i++)
+        {
+            dydt[i] = (y_next[i] - y[i]) / dt;
+        }
+        return dydt;
     }
 
     size_t estimate_steps_without_gopt(NUMERIC_T t, NUMERIC_T dt, NUMERIC_T x,
@@ -115,21 +125,17 @@ public:
         return N_est;
     }
 
-    std::tuple<vector<NUMERIC_T>, vector<NUMERIC_T>> solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
-                                                                NUMERIC_T const dt0, NUMERIC_T const x0,
-                                                                params_t const &params, std::string tag = "")
+    ntuple<2, NUMERIC_T> solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
+                                    NUMERIC_T const dt0, NUMERIC_T const x0,
+                                    params_t const &params, std::string tag = "")
     {
         using clock = std::chrono::high_resolution_clock;
         NUMERIC_T t = t0, dt = dt0;
         NUMERIC_T x_next, x = x0;
-        NUMERIC_T h_star;
 
-        vector<y_t> y_k, y_k_next;
+        vector<y_t> y_k, y_k_next, dydt;
         y_t y_star;
         size_t i_star, i_star_next;
-
-        vector<NUMERIC_T> xs({x0});
-        vector<NUMERIC_T> ts({t0});
 
         DAEOSolverLogger logger(tag);
         if (settings.LOGGING_ENABLED)
@@ -143,7 +149,7 @@ public:
 
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", opt_res.minima_intervals);
         y_k = y_k_medians(opt_res, t, x, params);
-        std::tie(y_star, i_star) = find_optimum(y_k, t, x, params);
+        i_star = find_optimum(y_k, t, x, params);
         if (settings.LOGGING_ENABLED)
         {
             logger.log_global_optimization(clock::now(), 0, t, x, y_k, i_star);
@@ -160,34 +166,30 @@ public:
         size_t iterations_since_search = 0;
         while (t < t_end)
         {
-            fmt::println("{:d} Optimum at h({:.2e}, {:.2e}, {::.4e}, {::.2e}) = {:.4e}",
-                         iter, t, x, y_star, params, h_star);
-            fmt::println("    this occurs at index {:d}", i_star);
-            std::tie(x_next, y_k_next) = solve_G_is_zero(t, dt0, x, i_star, y_k, params);
-            fmt::println("  x_next is {:.4e}, y_next is {:::.4e}", x_next, y_k_next);
-            vector<y_t> dydt(estimate_dydt(dt, y_k, y_k_next));
-            fmt::println("  estimated dydt is {:::.4e}", dydt);
-            fmt::println("  number of steps to optimum change is guessed to be {:d}",
-                         estimate_steps_without_gopt(t, dt, x, y_k_next, dydt, params));
-            std::tie(y_star, i_star_next) = find_optimum(y_k_next, t + dt, x_next, params);
-            fmt::println("  event fn. value is {:.6e}", event_function(t + dt, x_next, i_star, i_star_next, y_k, params));
-            if ((i_star_next != i_star) &&
-                (event_function(t + dt, x_next, i_star, i_star_next, y_k, params) >= std::numeric_limits<NUMERIC_T>::epsilon()))
+            std::tie(x_next, y_k_next) = integrate_daeo(t, dt0, x, i_star, y_k, params);
+            dydt = estimate_dydt(dt, y_k, y_k_next);
+            i_star_next = find_optimum(y_k_next, t + dt, x_next, params);
+            if (i_star_next != i_star)
             {
-                fmt::println("  **EVENT OCCURRED IN ITERATION {:d}! SOLVE EVENT FUNCTION HERE**", iter);
-                fmt::println("  **REWINDING TO t={:6e}**", t);
-                auto [t_event, x_event, i_star_event, y_event] = locate_event(t, dt, x, i_star, y_k, params);
-                dydt = estimate_dydt(dt, y_k, y_event);
-                std::tie(std::ignore, i_star) = find_optimum(y_event, t_event, x_event, params);
-                fmt::println("  Located Event at t={:.6e}, x={:.4e}, i*={:d}", t_event, x_event, i_star);
+                fmt::println("**EVENT OCCURRED IN ITERATION {:d}! SOLVE EVENT FUNCTION HERE**", iter);
+                fmt::println("**REWINDING TO t={:6e}**", t);
+                auto [t_event, x_event, y_k_event] = locate_and_integrate_to_event(t, dt, x, i_star, i_star_next, y_k, params);
+                fmt::println("  Event occurs at t={:.6e}, x={:.6e}", t_event, x_event);
+                NUMERIC_T dt_event = t_event - t;
+                dydt = estimate_dydt(dt_event, y_k, y_k_event);
                 if (settings.LOGGING_ENABLED)
                 {
-                    logger.log_event_correction(clock::now(), iter, t, t_event - t, x, x_event - x, y_k, dydt, i_star);
+                    logger.log_event_correction(clock::now(), iter, t, dt_event, x, x_event - x, y_k, dydt, i_star);
                 }
-                t = t_event;
-                y_k = y_event;
-                x = x_event;
-                i_star = i_star_event;
+                // complete time step from event back to the grid.
+                NUMERIC_T dt_grid = dt - dt_event;
+                std::tie(x_next, y_k_next) = integrate_daeo(t_event, dt_grid, x_event, i_star, y_k_event, params);
+                i_star_next = find_optimum(y_k_next, t + dt, x_next, params); // do we even need this?
+                dydt = estimate_dydt(dt_grid, y_k_event, y_k_next);
+                if (settings.LOGGING_ENABLED)
+                {
+                    logger.log_time_step(clock::now(), iter, t_event, dt_grid, x_event, x_next - x_event, y_k_event, dydt, i_star);
+                }
             }
             else
             {
@@ -196,13 +198,12 @@ public:
                 {
                     logger.log_time_step(clock::now(), iter, t, dt, x, x_next - x, y_k, dydt, i_star);
                 }
-                i_star = i_star_next;
-                t += dt;
-                x = x_next;
-                y_k = y_k_next;
             }
-            xs.push_back(x);
-            ts.push_back(t);
+
+            t += dt;
+            i_star = i_star_next;
+            x = x_next;
+            y_k = y_k_next;
 
             iter++;
             iterations_since_search++;
@@ -211,66 +212,51 @@ public:
         {
             logger.log_computation_end(clock::now(), iter, t, x, y_k, i_star);
         }
-        return {ts, xs};
-    }
-
-    vector<y_t> estimate_dydt(NUMERIC_T dt, vector<y_t> const &y, vector<y_t> const &y_next)
-    {
-        vector<y_t> dydt(y.size());
-        for (size_t i = 0; i < y.size(); i++)
-        {
-            dydt[i] = (y_next[i] - y[i]) / dt;
-        }
-        return dydt;
+        return {t, x};
     }
 
     /**
-     * @brief locate a global optimum change event in the interval [t, t+dt]
-     * @param[in] t
-     * @param[in] dt
-     * @param[in] x Value of x at time t
-     * @param[in] y_k List of local optima y_k at time t
-     * @param[in] params
+     * @brief
+     * @param[in] t0 Start of the time step.
+     * @param[in] dt Width of the time step.
+     * @param[in] x0 Value of @c x(t0)
+     * @param[in] i_star_0 Index of the global optimum @c y in @c y_k at @c t=t0
+     * @param[in] i_star_1 Index of the global optimum @c y in @c y_k at @c t=t0+dt
+     * @param[in] y_k_0 Vector of local optima at @c t=t0.
+     * @param[in] p Parameters.
+     * @return
      */
-    std::tuple<NUMERIC_T, NUMERIC_T, size_t, vector<y_t>> locate_event(NUMERIC_T const t, NUMERIC_T const dt,
-                                                                       NUMERIC_T const x, size_t const i_star,
-                                                                       vector<y_t> const &y_k, params_t const &params)
+    std::tuple<NUMERIC_T, NUMERIC_T, vector<y_t>> locate_and_integrate_to_event(NUMERIC_T const t0,
+                                                                                NUMERIC_T const dt,
+                                                                                NUMERIC_T const x0,
+                                                                                size_t const i_star_0,
+                                                                                size_t const i_star_1,
+                                                                                vector<y_t> const &y_k_0,
+                                                                                params_t const &p)
     {
-        // first, locate the event.
-        NUMERIC_T t_split = t;
-        NUMERIC_T dt_split = dt / 2;
-        NUMERIC_T x_split;
-        vector<y_t> y_k_split;
-        y_t y_star_split;
-        size_t i_star_split;
-
-        while (dt_split > settings.TOL_T)
+        NUMERIC_T x, H_value, dHdt_value, dt_guess = dt / 2;
+        NUMERIC_T t_guess = t0 + dt_guess;
+        size_t iter = 0;
+        size_t i_star = i_star_0;
+        vector<y_t> y_k;
+        while (iter < settings.MAX_NEWTON_ITERATIONS)
         {
-            // possible optimization here: reduce size of G by only choosing two yk
-            std::tie(x_split, y_k_split) = solve_G_is_zero(t_split, dt_split, x, i_star, y_k, params);
-            std::tie(y_star_split, i_star_split) = find_optimum(y_k_split, t_split + dt_split, x_split, params);
-            NUMERIC_T H_split = event_function(t_split + dt_split, x_split, i_star, i_star_split, y_k_split, params);
-            fmt::println("  t = {:.6e}, dt={:.4e}, x={:.4e}, H={:.6e}, i={:d}",
-                         t_split, dt_split, x_split, H_split, i_star_split);
-            if (fabs(H_split) <= std::numeric_limits<NUMERIC_T>::epsilon())
+            // integrate to t_guess
+            std::tie(x, y_k) = integrate_daeo(t0, dt_guess, x0, i_star_0, y_k_0, p);
+            H_value = H(t_guess, x, i_star_0, i_star_1, y_k, p);
+            if (fabs(H_value) < settings.NEWTON_EPS)
             {
-                // exactly located event
-                t_split += dt_split;
                 break;
             }
-            else if (H_split < 0)
-            {
-                // t+dt_split < t_event
-                t_split += dt_split;
-                dt_split = dt_split / 2;
-            }
-            else
-            {
-                // t+dt_split > t_event
-                dt_split = dt_split / 2;
-            }
+            i_star = find_optimum(y_k, t_guess, x, p);
+            dHdt_value = dHdx(t_guess, x, i_star_0, i_star_1, y_k, p) * m_xprime.value(t_guess, x, y_k[i_star], p);
+            // newton iteration.
+            t_guess = t_guess - H_value / dHdt_value;
+            dt_guess = t_guess - t0;
+            iter++;
         }
-        return {t_split, x_split, i_star_split, y_k_split};
+
+        return {t_guess, x, y_k};
     }
 
     /*
@@ -340,12 +326,21 @@ public:
     }
 
     /**
-     * @brief find @c x_next and @c y_k_next such that G(...) = 0 at t+dt.
+     * @brief Integrate the differential part of the DAEO from time @c t to @c t+dt
+     * @param[in] t Start of the time step.
+     * @param[in] dt Size of the time step.
+     * @param[in] x Value of x at @c t=t
+     * @param[in] i_star Index of the global optimum in @c y_k
+     * @param[in] y_k List of local optima of the objective function at @c t=t
+     * @param[in] p Parameter vector.
+     * @return The values of @c x and @c y_k at time @c t+dt .
+     * @details Integrates the ODE using the trapezoidal rule. Additionally solves ∂h/∂y_k = 0
+     * simultaenously. Uses Newton's method.
      */
-    std::tuple<NUMERIC_T, vector<y_t>> solve_G_is_zero(NUMERIC_T const t, NUMERIC_T const dt,
-                                                       NUMERIC_T const x, size_t i_star,
-                                                       vector<y_t> const &y_k,
-                                                       params_t const &p)
+    std::tuple<NUMERIC_T, vector<y_t>> integrate_daeo(NUMERIC_T const t, NUMERIC_T const dt,
+                                                      NUMERIC_T const x, size_t i_star,
+                                                      vector<y_t> const &y_k,
+                                                      params_t const &p)
     {
         size_t iter = 0;
         int temp_dims = 1 + y_k.size() * y_k[0].rows();
@@ -389,11 +384,21 @@ public:
      * @param[in] y_k List of all local optima @c y_k
      * @param[in] p Parameter vector.
      */
-    NUMERIC_T event_function(NUMERIC_T const t, NUMERIC_T const x,
-                             size_t i1, size_t i2,
-                             vector<y_t> const &y_k, params_t const &p)
+    inline NUMERIC_T H(NUMERIC_T const t, NUMERIC_T const x,
+                       size_t const i1, size_t const i2,
+                       vector<y_t> const &y_k, params_t const &p)
     {
         return m_objective.value(t, x, y_k[i1], p) - m_objective.value(t, x, y_k[i2], p);
+    }
+
+    /**
+     * @brief
+     */
+    inline NUMERIC_T dHdx(NUMERIC_T const t, NUMERIC_T const x,
+                          size_t const i1, size_t const i2,
+                          vector<y_t> const &y_k, params_t const &p)
+    {
+        return m_objective.grad_x(t, x, y_k[i1], p) - m_objective.grad_x(t, x, y_k[i2], p);
     }
 };
 
