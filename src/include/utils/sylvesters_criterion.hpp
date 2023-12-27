@@ -1,8 +1,6 @@
 #ifndef _SYLVESTERS_CRITERION_HPP
 #define _SYLVESTERS_CRITERION_HPP
 
-#include <array>
-
 #include "boost/numeric/interval.hpp"
 #include "Eigen/Dense"
 

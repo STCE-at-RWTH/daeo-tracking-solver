@@ -54,7 +54,7 @@ public:
 
     // this needs to be somewhere else
     size_t find_optimum(vector<y_t> const &y_k,
-                        NUMERIC_T const t, NUMERIC_T const x,
+                        NUMERIC_T t, NUMERIC_T x,
                         params_t const &params)
     {
         NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
@@ -71,8 +71,8 @@ public:
         return i_star;
     }
 
-    vector<y_t> y_k_medians(typename optimizer_t::results_t const &optres, NUMERIC_T const t,
-                            NUMERIC_T const x, params_t const &params)
+    vector<y_t> y_k_medians(typename optimizer_t::results_t const &optres, NUMERIC_T t,
+                            NUMERIC_T x, params_t const &params)
     {
         vector<y_t> y_medians;
         for (auto &y_i : optres.minima_intervals)
@@ -125,12 +125,11 @@ public:
         return N_est;
     }
 
-    ntuple<2, NUMERIC_T> solve_daeo(NUMERIC_T const t0, NUMERIC_T const t_end,
-                                    NUMERIC_T const dt0, NUMERIC_T const x0,
+    ntuple<2, NUMERIC_T> solve_daeo(NUMERIC_T t, NUMERIC_T t_end,
+                                    NUMERIC_T dt, NUMERIC_T x0,
                                     params_t const &params, std::string tag = "")
     {
         using clock = std::chrono::high_resolution_clock;
-        NUMERIC_T t = t0, dt = dt0;
         NUMERIC_T x_next, x = x0;
 
         vector<y_t> y_k, y_k_next, dydt;
@@ -226,9 +225,9 @@ public:
      * @param[in] p Parameters.
      * @return
      */
-    std::tuple<NUMERIC_T, NUMERIC_T, vector<y_t>> locate_and_integrate_to_event(NUMERIC_T const t0,
-                                                                                NUMERIC_T const dt,
-                                                                                NUMERIC_T const x0,
+    std::tuple<NUMERIC_T, NUMERIC_T, vector<y_t>> locate_and_integrate_to_event(NUMERIC_T t0,
+                                                                                NUMERIC_T dt,
+                                                                                NUMERIC_T x0,
                                                                                 size_t const i_star_0,
                                                                                 size_t const i_star_1,
                                                                                 vector<y_t> const &y_k_0,
@@ -280,8 +279,8 @@ public:
      * @param[in] y1 "Guess" value of y at t+dt
      * @param[in] p Parameter vector.
      */
-    Eigen::VectorX<NUMERIC_T> G(NUMERIC_T const t, NUMERIC_T const dt,
-                                NUMERIC_T const x0, NUMERIC_T const x1,
+    Eigen::VectorX<NUMERIC_T> G(NUMERIC_T t, NUMERIC_T dt,
+                                NUMERIC_T x0, NUMERIC_T x1,
                                 size_t const i_star,
                                 vector<y_t> const &y0, vector<y_t> const &y1, params_t const &p)
     {
@@ -306,8 +305,8 @@ public:
      * @param[in] y_k All possible minima we are considering at the future time point.
      * @param[in] p
      */
-    Eigen::MatrixX<NUMERIC_T> delG(NUMERIC_T const t_next, NUMERIC_T const dt,
-                                   NUMERIC_T const x, size_t i_star,
+    Eigen::MatrixX<NUMERIC_T> delG(NUMERIC_T t_next, NUMERIC_T dt,
+                                   NUMERIC_T x, size_t i_star,
                                    vector<y_t> const &y_k, params_t const &p)
     {
         using Eigen::seqN;
@@ -337,8 +336,8 @@ public:
      * @details Integrates the ODE using the trapezoidal rule. Additionally solves ∂h/∂y_k = 0
      * simultaenously. Uses Newton's method.
      */
-    std::tuple<NUMERIC_T, vector<y_t>> integrate_daeo(NUMERIC_T const t, NUMERIC_T const dt,
-                                                      NUMERIC_T const x, size_t i_star,
+    std::tuple<NUMERIC_T, vector<y_t>> integrate_daeo(NUMERIC_T t, NUMERIC_T dt,
+                                                      NUMERIC_T x, size_t i_star,
                                                       vector<y_t> const &y_k,
                                                       params_t const &p)
     {
@@ -384,7 +383,7 @@ public:
      * @param[in] y_k List of all local optima @c y_k
      * @param[in] p Parameter vector.
      */
-    inline NUMERIC_T H(NUMERIC_T const t, NUMERIC_T const x,
+    inline NUMERIC_T H(NUMERIC_T t, NUMERIC_T x,
                        size_t const i1, size_t const i2,
                        vector<y_t> const &y_k, params_t const &p)
     {
@@ -394,7 +393,7 @@ public:
     /**
      * @brief
      */
-    inline NUMERIC_T dHdx(NUMERIC_T const t, NUMERIC_T const x,
+    inline NUMERIC_T dHdx(NUMERIC_T t, NUMERIC_T x,
                           size_t const i1, size_t const i2,
                           vector<y_t> const &y_k, params_t const &p)
     {
