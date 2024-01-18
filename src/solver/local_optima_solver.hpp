@@ -87,6 +87,7 @@ public:
      */
     using y_hessian_interval_t = Eigen::Matrix<interval_t, YDIMS, YDIMS>;
 
+private:
     /**
      * @brief The objective function h(t, x, y; p) of which to find the minima.
      */
@@ -94,33 +95,27 @@ public:
     BNBOptimizerSettings<NUMERIC_T> const settings;
 
     /**
-     * @brief The prefix name for the solver log file
+     * @brief The domain of @c objective to search for local optima.
      */
-    std::string m_log_name;
-
-private:
-    /**
-     * @brief Queue of intervals in the domain of @c objective to search for local optima.
-     */
-    std::queue<y_interval_t> m_workq;
+    y_interval_t initial_search_domain;
 
 public:
     /**
      * @brief Initialize the solver with an objective function and settings.
      */
-    BNBLocalOptimizer(OBJECTIVE_T const &t_objective,
+    BNBLocalOptimizer(OBJECTIVE_T const &t_objective, y_t const &t_LL, y_t const &t_UR,
                       BNBOptimizerSettings<NUMERIC_T> const &t_settings)
-        : objective{t_objective}, settings{t_settings}, m_log_name{"bnb_log"} {}
-
-    void set_search_domain(y_t lower_left, y_t upper_right)
+        : objective{t_objective}, settings{t_settings}, initial_search_domain(t_LL.rows())
     {
-        y_interval_t val(lower_left.rows());
-        for (int i = 0; i < val.rows(); i++)
+        for (int i = 0; i < initial_search_domain.rows(); i++)
         {
-            val[i] = interval_t(lower_left(i), upper_right(i));
+            initial_search_domain(i) = interval_t(t_LL(i), t_LL(i));
         }
-        m_workq.push(val);
     }
+
+    BNBLocalOptimizer(OBJECTIVE_T const &t_objective, y_interval_t const &t_domain,
+                      BNBOptimizerSettings<NUMERIC_T> const &t_settings)
+        : objective{t_objective}, settings{t_settings}, initial_search_domain{t_domain} {}
 
     /**
      * @brief Find minima in @c y of @c h(t,x,y;p) using the set search domain.
@@ -131,37 +126,30 @@ public:
      * @param[in] only_global Should only the global maximum be found?
      * @returns Solver results struct.
      */
-    results_t find_minima_at(NUMERIC_T t, NUMERIC_T x, params_t const &params,
-                             bool const only_global)
+    results_t find_minima_at(NUMERIC_T t, NUMERIC_T x, params_t const &params, bool const only_global)
     {
-        if (m_workq.empty())
-        {
-            results_t r;
-            return r;
-        }
+        std::queue<y_interval_t> workq;
+        workq.push(initial_search_domain);
         size_t i = 0;
-        BNBOptimizerLogger logger(m_log_name);
+        BNBOptimizerLogger logger("opt_log");
         auto comp_start = std::chrono::high_resolution_clock::now();
         if (settings.LOGGING_ENABLED)
         {
-            logger.log_computation_begin(comp_start, i, m_workq.front());
+            logger.log_computation_begin(comp_start, i, workq.front());
         }
         results_t sresults;
-        while (!m_workq.empty() && i < settings.MAXITER)
+        while (!workq.empty() && i < settings.MAXITER)
         {
-            y_interval_t y_i(m_workq.front());
-            m_workq.pop();
+            y_interval_t y_i(workq.front());
+            workq.pop();
             process_interval(i, t, x, y_i, params, sresults, only_global, logger);
             i++;
         }
-
         auto comp_end = std::chrono::high_resolution_clock::now();
         if (settings.LOGGING_ENABLED)
         {
             logger.log_computation_end(comp_end, i, sresults.minima_intervals.size());
         }
-        m_workq = {};
-
         return sresults;
     }
 
@@ -173,7 +161,7 @@ private:
      * @param[in] x
      * @param[in] y
      * @param[in] params
-     * @param[inout] sresults reference to the global solver status
+     * @param[inout] sresults reference to the global optimizer status
      * @param[in] only_global only find the global optimum?
      * @param[in] logger
      * @details
@@ -266,7 +254,7 @@ private:
             auto ivals = bisect_interval(y_i, dims_converged);
             for (auto &ival : ivals)
             {
-                m_workq.push(ival);
+                workq.push(ival);
             }
         }
         if (settings.LOGGING_ENABLED)

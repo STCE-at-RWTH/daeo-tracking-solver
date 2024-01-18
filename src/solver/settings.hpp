@@ -41,11 +41,12 @@ struct DAEOSolverSettings
     NUMERIC_T y0_min;
     NUMERIC_T y0_max;
 
-    size_t SEARCH_FREQUENCY = 10;
-    size_t MAX_NEWTON_ITERATIONS = 20;
+    size_t SEARCH_FREQUENCY = 20;
+    size_t MAX_NEWTON_ITERATIONS = 40;
     NUMERIC_T NEWTON_EPS = 1.0e-6;
 
     bool RUN_GLOBAL_OPT_AT_EVENTS = false;
+    bool EVENT_DETECTION_AND_CORRECTION = true;
     bool LOGGING_ENABLED = true;
 };
 

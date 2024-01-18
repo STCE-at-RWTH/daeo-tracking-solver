@@ -40,7 +40,7 @@ void run_simple_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<T>
     typename solver_t::params_t p(2.0, 1.0, 0.5, pi / 2);
     
 
-    for (int i = 0; i < 7; i++)
+    for (int i = 0; i < 6; i++)
     {
         double dt = pow(10.0, -i);
         solver_t solver(f, h, optimizer_s, solver_s);
