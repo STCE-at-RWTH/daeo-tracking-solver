@@ -28,52 +28,18 @@ class DAEOTrackingSolver
 {
 public:
     using optimizer_t = BNBLocalOptimizer<OBJECTIVE, NUMERIC_T, suggested_solver_policies<NUMERIC_T>, YDIMS, NPARAMS>;
-    using y_t = optimizer_t::y_t;
-    using y_hessian_t = optimizer_t::y_hessian_t;
-    using params_t = optimizer_t::params_t;
+    using y_t = Eigen::Vector<NUMERIC_T, YDIMS>;
+    using y_hessian_t = Eigen::Matrix<NUMERIC_T, YDIMS, YDIMS>;
+    using params_t = Eigen::Vector<NUMERIC_T, NPARAMS>;
+
     using interval_t = optimizer_t::interval_t;
 
-    struct DAEOSolutionState
+    struct SolutionState
     {
         NUMERIC_T t;
         NUMERIC_T x;
         size_t i_star;
         vector<y_t> y;
-
-        DAEOSolutionState() = default;
-
-        DAEOSolutionState(NUMERIC_T t_t, NUMERIC_T t_x, typename optimizer_t::results_t gopt_results, params_t p) : t{t_t}, x{t_x}
-        {
-            using boost::numeric::median;
-            for (auto &y_i : gopt_results.minima_intervals)
-            {
-                y.emplace_back(y_i.size());
-                y.back() = y_i.unaryExpr([](auto ival)
-                                         { return median(ival); });
-            }
-        }
-
-        DAEOSolutionState(DAEOSolutionState const &other) : t{other.t}, x{other.x}, i_star{other.i_star}, y(other.y){};
-
-        friend void swap(DAEOSolutionState &a, DAEOSolutionState &b)
-        {
-            using std::swap;
-            swap(a.t, b.t);
-            swap(a.x, b.x);
-            swap(a.i_star, b.i_star);
-            swap(a.y, b.y);
-        }
-
-        DAEOSolutionState(DAEOSolutionState &&other) noexcept : DAEOSolutionState()
-        {
-            swap(*this, other);
-        };
-
-        DAEOSolutionState &operator=(DAEOSolutionState other)
-        {
-            swap(*this, other);
-            return *this;
-        }
 
         /**
          * @brief Return the number of local optima present at the this point in time.
@@ -83,6 +49,9 @@ public:
         // Eigen should help with compile time optimization for this.
         // TODO make if constexpr(Eigen::Dynamic) if necessary.
 
+        /**
+         * @brief Return the number of dimensions of each local optimizer.
+         */
         inline int ydims() const { return y[0].rows(); }
 
         // what the heck am I doing
@@ -99,16 +68,127 @@ public:
         : m_xprime(t_xprime), m_objective(t_objective), settings(t_global_settings),
           m_optimizer(t_objective, y_t{settings.y0_min}, y_t{settings.y0_max}, t_opt_settings) {}
 
+    vector<SolutionState> solve_daeo(NUMERIC_T t, NUMERIC_T t_end,
+                                     NUMERIC_T dt, NUMERIC_T x0,
+                                     params_t const &params, std::string tag = "")
+    {
+        using clock = std::chrono::high_resolution_clock;
+        vector<SolutionState> solution_trajctory;
+        DAEOSolverLogger logger(tag);
+        if (settings.LOGGING_ENABLED)
+        {
+            logger.log_computation_begin(clock::now(), 0, t, dt, x0);
+        }
+        fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
+        typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(t, x0, params, false);
+        fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", opt_res.minima_intervals);
+        SolutionState current, next;
+        current = solution_state_from_optimizer_results(t, x0, opt_res, params);
+        vector<y_t> dy;
+        if (settings.LOGGING_ENABLED)
+        {
+            logger.log_global_optimization(clock::now(), 0, current.t, current.x, current.y, current.i_star);
+        }
+
+        // next portion relies on the assumption that two minimizers of h don't "cross paths" inside of a time step
+        // even if they did, would it really matter? since we don't do any implicit function silliness
+        // we probably wouldn't even be able to tell if this did happen
+        // it may be beneficial to periodically check all of the y_is and see if they're close to each other before and after
+        // solving for the values at the next time step.
+        // This would trigger a search for minima of h(x, y) again, since we may have "lost" one
+
+        size_t iter = 1, iterations_since_search = 0;
+        bool event_found;
+        while (current.t < t_end)
+        {
+            event_found = false; // we have not found an event in this time step (yet).
+            solution_trajctory.push_back(current);
+            next = integrate_daeo(current, dt, params);
+            if (iterations_since_search == settings.SEARCH_FREQUENCY)
+            {
+                opt_res = m_optimizer.find_minima_at(next.t, next.x, params, false);
+                SolutionState from_opt = solution_state_from_optimizer_results(next.t, next.x, opt_res, params);
+                if (settings.LOGGING_ENABLED)
+                {
+                    logger.log_global_optimization(clock::now(), iter, from_opt.t, from_opt.x, from_opt.y, from_opt.i_star);
+                }
+                // check if we need to rewind multiple time steps
+                if (from_opt.n_local_optima() < next.n_local_optima())
+                {
+                    // uh oh
+                }
+                else if (from_opt.n_local_optima() > next.n_local_optima())
+                {
+                    //UH OH
+                }
+                
+                // check for event / correct any error that may have accumulated from the local optimizer tracking
+
+                iterations_since_search = 0;
+            }
+            // dydt = estimate_dydt(dt, y_k, y_k_next);
+            if (settings.EVENT_DETECTION_AND_CORRECTION && event_found)
+            {
+                // locate the event and take a time step to it
+                SolutionState event = locate_and_integrate_to_event(current, next, params);
+                NUMERIC_T dt_event = event.t - current.t;
+                if (settings.LOGGING_ENABLED)
+                {
+                    dy = compute_dy(current.y, event.y);
+                    logger.log_event_correction(clock::now(), iter, event.t, dt_event, event.x, event.x - current.x, event.y, dy, event.i_star);
+                }
+                // complete time step from event back to the grid.
+                NUMERIC_T dt_grid = dt - dt_event;
+                next = integrate_daeo(event, dt_grid, params);
+            }
+            // we don't need to handle events, we can move on.
+            if (settings.LOGGING_ENABLED)
+            {
+                dy = compute_dy(current.y, next.y);
+                logger.log_time_step(clock::now(), iter, next.t, dt, next.x, next.x - current.x, next.y, dy, next.i_star);
+            }
+
+            current = next;
+            iter++;
+            iterations_since_search++;
+        }
+        if (settings.LOGGING_ENABLED)
+        {
+            logger.log_computation_end(clock::now(), iter, current.t, current.x, current.y, current.i_star);
+        }
+        return solution_trajctory;
+    }
+
 private:
     DAEOWrappedFunction<XPRIME> const m_xprime;
     DAEOWrappedFunction<OBJECTIVE> const m_objective;
     DAEOSolverSettings<NUMERIC_T> settings;
     optimizer_t m_optimizer;
 
+    SolutionState solution_state_from_optimizer_results(NUMERIC_T const t, NUMERIC_T const x,
+                                                        typename optimizer_t::results_t gopt_results,
+                                                        params_t p)
+    {
+        using boost::numeric::median;
+        vector<y_t> y;
+        for (auto &y_i : gopt_results.minima_intervals)
+        {
+            y.emplace_back(y_i.size());
+            y.back() = y_i.unaryExpr([](auto ival)
+                                     { return median(ival); });
+        }
+        SolutionState ss(t, x, 0, y);
+        update_optimizer(ss, p);
+        return ss;
+    }
+
     /**
-     * @brief Update the index of the global optimum.
+     * @brief Update the index of the global optimizer @c y★ in a solution state @c s
+     * given a parameter vector @c p .
+     * @param[inout] s The solution state state in which to update the optimizer index.
+     * @param[in] p The parameter vector to pass through to the objective function.
      */
-    void update_optimum(DAEOSolutionState s, const params_t &p)
+    void update_optimizer(SolutionState &s, const params_t &p)
     {
         NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
         for (size_t i = 0; i < s.n_local_optima(); i++)
@@ -163,87 +243,6 @@ private:
         return N_est;
     }
 
-public:
-    ntuple<2, NUMERIC_T> solve_daeo(NUMERIC_T t, NUMERIC_T t_end,
-                                    NUMERIC_T dt, NUMERIC_T x0,
-                                    params_t const &params, std::string tag = "")
-    {
-        using clock = std::chrono::high_resolution_clock;
-        DAEOSolverLogger logger(tag);
-        if (settings.LOGGING_ENABLED)
-        {
-            logger.log_computation_begin(clock::now(), 0, t, dt, x0);
-        }
-        fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
-        typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(t, x0, params, false);
-        fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", opt_res.minima_intervals);
-        DAEOSolutionState current(t, x0, opt_res, params);
-        update_optimum(current, params);
-        DAEOSolutionState next;
-        vector<y_t> dy;
-        if (settings.LOGGING_ENABLED)
-        {
-            logger.log_global_optimization(clock::now(), 0, current.t, current.x, current.y, current.i_star);
-        }
-
-        // next portion relies on the assumption that two minima of h don't "cross paths" inside of a time step
-        // even if they did, would it really matter? since we don't do any implicit function silliness
-        // we probably wouldn't even be able to tell if this did happen
-        // it may be beneficial to periodically check all of the y_is and see if they're close to each other before and after
-        // solving for the values at the next time step.
-        // This would trigger a search for minima of h(x, y) again, since we may have "lost" one
-
-        size_t iter = 0;
-        size_t iterations_since_search = 0;
-        while (current.t < t_end)
-        {
-            next = integrate_daeo(current, dt, params);
-            update_optimum(next, params);
-            // dydt = estimate_dydt(dt, y_k, y_k_next);
-            if (settings.EVENT_DETECTION_AND_CORRECTION && next.i_star != current.i_star)
-            {
-                fmt::println("**EVENT OCCURRED IN ITERATION {:d}! SOLVE EVENT FUNCTION HERE**", iter);
-                fmt::println("**REWINDING TO t={:6e}**", t);
-                DAEOSolutionState event = locate_and_integrate_to_event(current, next, params);
-                fmt::println("  Event occurs at t={:.6e}, x={:.6e}", event.t, event.x);
-                NUMERIC_T dt_event = event.t - current.t;
-                dy = compute_dy(current.y, event.y);
-                if (settings.LOGGING_ENABLED)
-                {
-                    logger.log_event_correction(clock::now(), iter, event.t, dt_event, event.x, event.x - current.x, event.y, dy, event.i_star);
-                }
-                // complete time step from event back to the grid.
-                NUMERIC_T dt_grid = dt - dt_event;
-                next = integrate_daeo(event, dt_grid, params);
-                update_optimum(next, params);
-                dy = compute_dy(event.y, next.y);
-                if (settings.LOGGING_ENABLED)
-                {
-                    logger.log_time_step(clock::now(), iter, next.t, dt_grid, next.x, next.x - event.x, next.y, dy, next.i_star);
-                }
-            }
-            else
-            {
-                dy = compute_dy(current.y, next.y);
-                // we don't need to handle events, we can move on.
-                if (settings.LOGGING_ENABLED)
-                {
-                    logger.log_time_step(clock::now(), iter, next.t, dt, next.x, next.x - current.x, next.y, dy, next.i_star);
-                }
-            }
-
-            current = next;
-
-            iter++;
-            iterations_since_search++;
-        }
-        if (settings.LOGGING_ENABLED)
-        {
-            logger.log_computation_end(clock::now(), iter, current.t, current.x, current.y, current.i_star);
-        }
-        return {current.t, current.x};
-    }
-
     /*
         G and delG are used by newton iteration to find x and y at the next time step.
         There is the condition on x from the trapezoidal rule:
@@ -262,7 +261,7 @@ public:
      * @param[in] dt Current time step size.
      * @param[in] p Parameter vector.
      */
-    Eigen::VectorX<NUMERIC_T> G(DAEOSolutionState const &start, DAEOSolutionState const &guess, NUMERIC_T const dt, params_t const &p)
+    Eigen::VectorX<NUMERIC_T> G(SolutionState const &start, SolutionState const &guess, NUMERIC_T const dt, params_t const &p)
     {
         int ydims = start.ydims();
         // fix i_star (assume no event in this part of the program)
@@ -282,7 +281,7 @@ public:
      * @param[in] dt The time step size from the beginning of the time step to where @c guess is evaluated.
      * @param[in] p Parameter vector.
      */
-    Eigen::MatrixX<NUMERIC_T> delG(DAEOSolutionState const &guess, NUMERIC_T const dt, params_t const &p)
+    Eigen::MatrixX<NUMERIC_T> delG(SolutionState const &guess, NUMERIC_T const dt, params_t const &p)
     {
         using Eigen::seqN;
         int ydims = guess.ydims();
@@ -306,18 +305,19 @@ public:
      * @details Integrates the ODE using the trapezoidal rule. Additionally solves ∂h/∂y_k = 0
      * simultaenously. Uses Newton's method.
      */
-    DAEOSolutionState integrate_daeo(DAEOSolutionState const &start, NUMERIC_T dt, params_t const &p)
+    SolutionState integrate_daeo(SolutionState const &start, NUMERIC_T dt, params_t const &p)
     {
         // copy into our guess and advance time
-        DAEOSolutionState next(start);
+        SolutionState next(start);
         next.t += dt;
-        Eigen::VectorX<NUMERIC_T> g, delg, diff;
+        Eigen::VectorX<NUMERIC_T> g, diff;
+        Eigen::MatrixX<NUMERIC_T> nabla_g;
         size_t iter = 0;
         while (iter < settings.MAX_NEWTON_ITERATIONS)
         {
             g = G(start, next, dt, p);
-            delg = delG(next, dt, p);
-            diff = delg.colPivHouseholderQr().solve(g);
+            nabla_g = delG(next, dt, p);
+            diff = nabla_g.colPivHouseholderQr().solve(g);
             next.x = next.x - diff(0);
             for (size_t i = 0; i < start.n_local_optima(); i++)
             {
@@ -329,6 +329,7 @@ public:
             }
             iter++;
         }
+        update_optimizer(next, p);
         return next;
     }
 
@@ -346,7 +347,7 @@ public:
      * @param[in] y_k List of all local optima @c y_k
      * @param[in] p Parameter vector.
      */
-    inline NUMERIC_T H(DAEOSolutionState const &state, size_t const i1, size_t const i2, params_t const &p)
+    inline NUMERIC_T H(SolutionState const &state, size_t const i1, size_t const i2, params_t const &p)
     {
         return m_objective.value(state.t, state.x, state.y[i1], p) - m_objective.value(state.t, state.x, state.y[i2], p);
     }
@@ -354,7 +355,7 @@ public:
     /**
      * @brief
      */
-    inline NUMERIC_T dHdx(DAEOSolutionState const &state, size_t const i1, size_t const i2, params_t const &p)
+    inline NUMERIC_T dHdx(SolutionState const &state, size_t const i1, size_t const i2, params_t const &p)
     {
         return m_objective.grad_x(state.t, state.x, state.y[i1], p) - m_objective.grad_x(state.t, state.x, state.y[i2], p);
     }
@@ -366,17 +367,16 @@ public:
      * @param[in] p
      * @return Value of solution at event.
      */
-    DAEOSolutionState locate_and_integrate_to_event(DAEOSolutionState const &start, DAEOSolutionState const &end, params_t const &p)
+    SolutionState locate_and_integrate_to_event(SolutionState const &start, SolutionState const &end, params_t const &p)
     {
         NUMERIC_T H_value, dHdt_value, dt_guess;
-        DAEOSolutionState guess;
+        SolutionState guess;
         dt_guess = (end.t - start.t) / 2;
         size_t iter = 0;
         while (iter < settings.MAX_NEWTON_ITERATIONS)
         {
             // integrate to t_guess
             guess = integrate_daeo(start, dt_guess, p);
-            update_optimum(guess, p);
             H_value = H(guess, start.i_star, end.i_star, p);
             if (fabs(H_value) < settings.NEWTON_EPS)
             {

@@ -64,3 +64,11 @@ target_link_libraries(prototype PRIVATE NAG::dco_cpp fmt::fmt)
 add_executable(main src/main.cpp ${bnb_solver_headers})
 target_include_directories(main PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(main PRIVATE NAG::dco_cpp fmt::fmt)
+
+add_executable(optimized src/main.cpp 
+  ${bnb_solver_headers} 
+  ${daeo_solver_headers} 
+  ${objective_headers})
+target_include_directories(optimized PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
+target_link_libraries(optimized PRIVATE NAG::dco_cpp fmt::fmt)
+target_compile_options(optimized PUBLIC -O3)

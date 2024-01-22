@@ -200,7 +200,7 @@ enum SolverEventCode
 
 auto format_as(SolverEventCode evc) { return fmt::underlying(evc); }
 
-constexpr char SOLVER_LOG_COLUMNS[]{"ITERATION\tTSTAMP\tEVENTID\tEXTRACODE\tT\tDT\tX\tDXDT\tY\tDYDT_EST\tISTAR"};
+constexpr char SOLVER_LOG_COLUMNS[]{"ITERATION\tTSTAMP\tEVENTID\tEXTRACODE\tT\tDT\tX\tDX\tY\tDY\tISTAR"};
 constexpr char LOG_INTEGER_VAL[]{"{:d}"};
 
 class DAEOSolverLogger

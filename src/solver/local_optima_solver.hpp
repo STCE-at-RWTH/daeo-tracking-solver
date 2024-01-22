@@ -109,7 +109,7 @@ public:
     {
         for (int i = 0; i < initial_search_domain.rows(); i++)
         {
-            initial_search_domain(i) = interval_t(t_LL(i), t_LL(i));
+            initial_search_domain(i) = interval_t(t_LL(i), t_UR(i));
         }
     }
 
@@ -142,7 +142,8 @@ public:
         {
             y_interval_t y_i(workq.front());
             workq.pop();
-            process_interval(i, t, x, y_i, params, sresults, only_global, logger);
+
+            process_interval(i, t, x, y_i, params, sresults, workq, only_global, logger);
             i++;
         }
         auto comp_end = std::chrono::high_resolution_clock::now();
@@ -164,12 +165,13 @@ private:
      * @param[inout] sresults reference to the global optimizer status
      * @param[in] only_global only find the global optimum?
      * @param[in] logger
+     * @returns Vector of intervals to be added to the work queue.
      * @details
      */
     void process_interval(size_t tasknum, NUMERIC_T t, NUMERIC_T x,
                           y_interval_t const &y_i, params_t const &params,
-                          results_t &sresults, bool only_global,
-                          BNBOptimizerLogger &logger)
+                          results_t &sresults, std::queue<y_interval_t> &workq,
+                          bool only_global, BNBOptimizerLogger &logger)
     {
         using clock = std::chrono::high_resolution_clock;
         size_t result_code = 0;
@@ -251,10 +253,9 @@ private:
             // second derivative test is inconclusive...
             // interval contains a change of sign in the gradient, but it is not locally convex.
             // therefore, we choose to bisect the interval and continue the search.
-            auto ivals = bisect_interval(y_i, dims_converged);
-            for (auto &ival : ivals)
+            for (auto &y : bisect_interval(y_i, dims_converged))
             {
-                workq.push(ival);
+                workq.push(y);
             }
         }
         if (settings.LOGGING_ENABLED)
