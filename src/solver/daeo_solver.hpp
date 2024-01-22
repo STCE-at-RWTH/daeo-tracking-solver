@@ -212,37 +212,6 @@ private:
         return dy;
     }
 
-    size_t estimate_steps_without_gopt(NUMERIC_T t, NUMERIC_T dt, NUMERIC_T x,
-                                       vector<y_t> y_k, vector<y_t> dy,
-                                       params_t p)
-    {
-        size_t N_est = std::numeric_limits<size_t>::max();
-        Eigen::VectorX<NUMERIC_T> dhdt(y_k.size());
-        Eigen::VectorX<NUMERIC_T> h_k(y_k.size());
-        for (size_t i = 0; i < y_k.size(); i++)
-        {
-            h_k(i) = m_objective.value(t, x, y_k[i], p);
-            // compute total derivative from partial h partial x and partial h partial y
-            dhdt(i) = m_objective.grad_x(t, x, y_k[i], p) * m_xprime.value(t, x, y_k[i], p) +
-                      m_objective.grad_y(t, x, y_k[i], p).dot(dy[i]) / dt;
-        }
-        for (size_t i = 0; i < y_k.size(); i++)
-        {
-            for (size_t j = i + 1; j < y_k.rows(); j++)
-            {
-                // compare each pair of minima
-                NUMERIC_T dist = abs(h_k(i) - h_k(j));              // distance between
-                NUMERIC_T rate = abs(dhdt(i)) + abs(dhdt(j));       // maximum rate of decrease
-                size_t n = static_cast<size_t>((dist / rate / dt)); // we want to truncate here!
-                if (n < N_est)
-                {
-                    N_est = n;
-                }
-            }
-        }
-        return N_est;
-    }
-
     /*
         G and delG are used by newton iteration to find x and y at the next time step.
         There is the condition on x from the trapezoidal rule:
