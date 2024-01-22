@@ -23,6 +23,35 @@
 
 using std::vector;
 
+template<typename NUMERIC_T, int YDIMS>
+struct DAEOSolutionState
+{
+    NUMERIC_T t;
+    NUMERIC_T x;
+    size_t i_star;
+    vector<Eigen::Vector<NUMERIC_T, YDIMS>> y;
+
+    /**
+     * @brief Return the number of local optima present at the this point in time.
+     */
+    inline size_t n_local_optima() const { return y.size(); }
+
+    // Eigen should help with compile time optimization for this.
+    // TODO make if constexpr(Eigen::Dynamic) if necessary.
+
+    /**
+     * @brief Return the number of dimensions of each local optimizer.
+     */
+    inline int ydims() const { return y[0].rows(); }
+
+    // what the heck am I doing
+    /**
+     * @brief Get a (const) reference to the global optimum y*
+     */
+    inline Eigen::Vector<NUMERIC_T, YDIMS> &y_star() { return y[i_star]; }
+    inline const Eigen::Vector<NUMERIC_T, YDIMS> &y_star() const { return y[i_star]; }
+};
+
 template <typename XPRIME, typename OBJECTIVE, typename NUMERIC_T, int YDIMS, int NPARAMS>
 class DAEOTrackingSolver
 {
@@ -31,36 +60,8 @@ public:
     using y_t = Eigen::Vector<NUMERIC_T, YDIMS>;
     using y_hessian_t = Eigen::Matrix<NUMERIC_T, YDIMS, YDIMS>;
     using params_t = Eigen::Vector<NUMERIC_T, NPARAMS>;
-
     using interval_t = optimizer_t::interval_t;
-
-    struct SolutionState
-    {
-        NUMERIC_T t;
-        NUMERIC_T x;
-        size_t i_star;
-        vector<y_t> y;
-
-        /**
-         * @brief Return the number of local optima present at the this point in time.
-         */
-        inline size_t n_local_optima() const { return y.size(); }
-
-        // Eigen should help with compile time optimization for this.
-        // TODO make if constexpr(Eigen::Dynamic) if necessary.
-
-        /**
-         * @brief Return the number of dimensions of each local optimizer.
-         */
-        inline int ydims() const { return y[0].rows(); }
-
-        // what the heck am I doing
-        /**
-         * @brief Get a (const) reference to the global optimum y*
-         */
-        inline y_t &y_star() { return y[i_star]; }
-        inline const y_t &y_star() const { return y[i_star]; }
-    };
+    using solution_state_t = DAEOSolutionState<NUMERIC_T, YDIMS>;
 
     DAEOTrackingSolver(XPRIME const &t_xprime, OBJECTIVE const &t_objective,
                        BNBOptimizerSettings<NUMERIC_T> &t_opt_settings,
@@ -68,12 +69,12 @@ public:
         : m_xprime(t_xprime), m_objective(t_objective), settings(t_global_settings),
           m_optimizer(t_objective, y_t{settings.y0_min}, y_t{settings.y0_max}, t_opt_settings) {}
 
-    vector<SolutionState> solve_daeo(NUMERIC_T t, NUMERIC_T t_end,
+    vector<solution_state_t> solve_daeo(NUMERIC_T t, NUMERIC_T t_end,
                                      NUMERIC_T dt, NUMERIC_T x0,
                                      params_t const &params, std::string tag = "")
     {
         using clock = std::chrono::high_resolution_clock;
-        vector<SolutionState> solution_trajctory;
+        vector<solution_state_t> solution_trajctory;
         DAEOSolverLogger logger(tag);
         if (settings.LOGGING_ENABLED)
         {
@@ -82,7 +83,7 @@ public:
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
         typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(t, x0, params, false);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", opt_res.minima_intervals);
-        SolutionState current, next;
+        solution_state_t current, next;
         current = solution_state_from_optimizer_results(t, x0, opt_res, params);
         vector<y_t> dy;
         if (settings.LOGGING_ENABLED)
@@ -107,7 +108,7 @@ public:
             if (iterations_since_search == settings.SEARCH_FREQUENCY)
             {
                 opt_res = m_optimizer.find_minima_at(next.t, next.x, params, false);
-                SolutionState from_opt = solution_state_from_optimizer_results(next.t, next.x, opt_res, params);
+                solution_state_t from_opt = solution_state_from_optimizer_results(next.t, next.x, opt_res, params);
                 if (settings.LOGGING_ENABLED)
                 {
                     logger.log_global_optimization(clock::now(), iter, from_opt.t, from_opt.x, from_opt.y, from_opt.i_star);
@@ -119,18 +120,18 @@ public:
                 }
                 else if (from_opt.n_local_optima() > next.n_local_optima())
                 {
-                    //UH OH
+                    // UH OH
                 }
-                
-                // check for event / correct any error that may have accumulated from the local optimizer tracking
 
-                iterations_since_search = 0;
+                // check for event / correct any error that may have accumulated from the local optimizer tracking
+                event_found = (next.y_star() - from_opt.y_star()).norm() <
+                              iterations_since_search = 0;
             }
             // dydt = estimate_dydt(dt, y_k, y_k_next);
             if (settings.EVENT_DETECTION_AND_CORRECTION && event_found)
             {
                 // locate the event and take a time step to it
-                SolutionState event = locate_and_integrate_to_event(current, next, params);
+                solution_state_t event = locate_and_integrate_to_event(current, next, params);
                 NUMERIC_T dt_event = event.t - current.t;
                 if (settings.LOGGING_ENABLED)
                 {
@@ -165,7 +166,7 @@ private:
     DAEOSolverSettings<NUMERIC_T> settings;
     optimizer_t m_optimizer;
 
-    SolutionState solution_state_from_optimizer_results(NUMERIC_T const t, NUMERIC_T const x,
+    solution_state_t solution_state_from_optimizer_results(NUMERIC_T const t, NUMERIC_T const x,
                                                         typename optimizer_t::results_t gopt_results,
                                                         params_t p)
     {
@@ -177,7 +178,7 @@ private:
             y.back() = y_i.unaryExpr([](auto ival)
                                      { return median(ival); });
         }
-        SolutionState ss(t, x, 0, y);
+        solution_state_t ss(t, x, 0, y);
         update_optimizer(ss, p);
         return ss;
     }
@@ -188,7 +189,7 @@ private:
      * @param[inout] s The solution state state in which to update the optimizer index.
      * @param[in] p The parameter vector to pass through to the objective function.
      */
-    void update_optimizer(SolutionState &s, const params_t &p)
+    void update_optimizer(solution_state_t &s, const params_t &p)
     {
         NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
         for (size_t i = 0; i < s.n_local_optima(); i++)
@@ -230,7 +231,7 @@ private:
      * @param[in] dt Current time step size.
      * @param[in] p Parameter vector.
      */
-    Eigen::VectorX<NUMERIC_T> G(SolutionState const &start, SolutionState const &guess, NUMERIC_T const dt, params_t const &p)
+    Eigen::VectorX<NUMERIC_T> G(solution_state_t const &start, solution_state_t const &guess, NUMERIC_T const dt, params_t const &p)
     {
         int ydims = start.ydims();
         // fix i_star (assume no event in this part of the program)
@@ -250,7 +251,7 @@ private:
      * @param[in] dt The time step size from the beginning of the time step to where @c guess is evaluated.
      * @param[in] p Parameter vector.
      */
-    Eigen::MatrixX<NUMERIC_T> delG(SolutionState const &guess, NUMERIC_T const dt, params_t const &p)
+    Eigen::MatrixX<NUMERIC_T> delG(solution_state_t const &guess, NUMERIC_T const dt, params_t const &p)
     {
         using Eigen::seqN;
         int ydims = guess.ydims();
@@ -274,10 +275,10 @@ private:
      * @details Integrates the ODE using the trapezoidal rule. Additionally solves ∂h/∂y_k = 0
      * simultaenously. Uses Newton's method.
      */
-    SolutionState integrate_daeo(SolutionState const &start, NUMERIC_T dt, params_t const &p)
+    solution_state_t integrate_daeo(solution_state_t const &start, NUMERIC_T dt, params_t const &p)
     {
         // copy into our guess and advance time
-        SolutionState next(start);
+        solution_state_t next(start);
         next.t += dt;
         Eigen::VectorX<NUMERIC_T> g, diff;
         Eigen::MatrixX<NUMERIC_T> nabla_g;
@@ -316,7 +317,7 @@ private:
      * @param[in] y_k List of all local optima @c y_k
      * @param[in] p Parameter vector.
      */
-    inline NUMERIC_T H(SolutionState const &state, size_t const i1, size_t const i2, params_t const &p)
+    inline NUMERIC_T H(solution_state_t const &state, size_t const i1, size_t const i2, params_t const &p)
     {
         return m_objective.value(state.t, state.x, state.y[i1], p) - m_objective.value(state.t, state.x, state.y[i2], p);
     }
@@ -324,7 +325,7 @@ private:
     /**
      * @brief
      */
-    inline NUMERIC_T dHdx(SolutionState const &state, size_t const i1, size_t const i2, params_t const &p)
+    inline NUMERIC_T dHdx(solution_state_t const &state, size_t const i1, size_t const i2, params_t const &p)
     {
         return m_objective.grad_x(state.t, state.x, state.y[i1], p) - m_objective.grad_x(state.t, state.x, state.y[i2], p);
     }
@@ -336,10 +337,10 @@ private:
      * @param[in] p
      * @return Value of solution at event.
      */
-    SolutionState locate_and_integrate_to_event(SolutionState const &start, SolutionState const &end, params_t const &p)
+    solution_state_t locate_and_integrate_to_event(solution_state_t const &start, solution_state_t const &end, params_t const &p)
     {
         NUMERIC_T H_value, dHdt_value, dt_guess;
-        SolutionState guess;
+        solution_state_t guess;
         dt_guess = (end.t - start.t) / 2;
         size_t iter = 0;
         while (iter < settings.MAX_NEWTON_ITERATIONS)
