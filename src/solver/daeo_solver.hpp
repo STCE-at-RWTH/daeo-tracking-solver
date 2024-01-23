@@ -23,7 +23,7 @@
 
 using std::vector;
 
-template<typename NUMERIC_T, int YDIMS>
+template <typename NUMERIC_T, int YDIMS>
 struct DAEOSolutionState
 {
     NUMERIC_T t;
@@ -70,8 +70,8 @@ public:
           m_optimizer(t_objective, y_t{settings.y0_min}, y_t{settings.y0_max}, t_opt_settings) {}
 
     vector<solution_state_t> solve_daeo(NUMERIC_T t, NUMERIC_T t_end,
-                                     NUMERIC_T dt, NUMERIC_T x0,
-                                     params_t const &params, std::string tag = "")
+                                        NUMERIC_T dt, NUMERIC_T x0,
+                                        params_t const &params, std::string tag = "")
     {
         using clock = std::chrono::high_resolution_clock;
         vector<solution_state_t> solution_trajctory;
@@ -81,7 +81,7 @@ public:
             logger.log_computation_begin(clock::now(), 0, t, dt, x0);
         }
         fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
-        typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(t, x0, params, false);
+        typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(t, x0, params, settings.ONLY_GLOBAL_OPTIMIZATION);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", opt_res.minima_intervals);
         solution_state_t current, next;
         current = solution_state_from_optimizer_results(t, x0, opt_res, params);
@@ -98,35 +98,36 @@ public:
         // solving for the values at the next time step.
         // This would trigger a search for minima of h(x, y) again, since we may have "lost" one
 
-        size_t iter = 1, iterations_since_search = 0;
+        size_t iter = 0, iterations_since_search = 0;
         bool event_found;
         while (current.t < t_end)
         {
-            event_found = false; // we have not found an event in this time step (yet).
             solution_trajctory.push_back(current);
+            event_found = false; // we have not found an event in this time step (yet).
             next = integrate_daeo(current, dt, params);
+            update_optimizer(next, params);
             if (iterations_since_search == settings.SEARCH_FREQUENCY)
             {
-                opt_res = m_optimizer.find_minima_at(next.t, next.x, params, false);
+                opt_res = m_optimizer.find_minima_at(next.t, next.x, params, settings.ONLY_GLOBAL_OPTIMIZATION);
                 solution_state_t from_opt = solution_state_from_optimizer_results(next.t, next.x, opt_res, params);
                 if (settings.LOGGING_ENABLED)
                 {
                     logger.log_global_optimization(clock::now(), iter, from_opt.t, from_opt.x, from_opt.y, from_opt.i_star);
                 }
                 // check if we need to rewind multiple time steps
-                if (from_opt.n_local_optima() < next.n_local_optima())
+                if (from_opt.n_local_optima() != next.n_local_optima())
                 {
-                    // uh oh
-                }
-                else if (from_opt.n_local_optima() > next.n_local_optima())
-                {
-                    // UH OH
+                    fmt::println("OH NO");
                 }
 
-                // check for event / correct any error that may have accumulated from the local optimizer tracking
-                event_found = (next.y_star() - from_opt.y_star()).norm() <
-                              iterations_since_search = 0;
+                // check for event and correct any error that may have accumulated
+                // from the local optimizer tracking
+                event_found = (next.y_star() - from_opt.y_star()).norm() > settings.EVENT_EPS;
+                next = std::move(from_opt);
+                iterations_since_search = 0;
             }
+
+            event_found = event_found || current.i_star != next.i_star;
             // dydt = estimate_dydt(dt, y_k, y_k_next);
             if (settings.EVENT_DETECTION_AND_CORRECTION && event_found)
             {
@@ -141,6 +142,7 @@ public:
                 // complete time step from event back to the grid.
                 NUMERIC_T dt_grid = dt - dt_event;
                 next = integrate_daeo(event, dt_grid, params);
+                update_optimizer(next, params);
             }
             // we don't need to handle events, we can move on.
             if (settings.LOGGING_ENABLED)
@@ -148,8 +150,7 @@ public:
                 dy = compute_dy(current.y, next.y);
                 logger.log_time_step(clock::now(), iter, next.t, dt, next.x, next.x - current.x, next.y, dy, next.i_star);
             }
-
-            current = next;
+            current = std::move(next);
             iter++;
             iterations_since_search++;
         }
@@ -166,9 +167,12 @@ private:
     DAEOSolverSettings<NUMERIC_T> settings;
     optimizer_t m_optimizer;
 
+    /**
+     * @brief Create a valid solution state from the results of the global optimizer at (t, x).
+    */
     solution_state_t solution_state_from_optimizer_results(NUMERIC_T const t, NUMERIC_T const x,
-                                                        typename optimizer_t::results_t gopt_results,
-                                                        params_t p)
+                                                           typename optimizer_t::results_t gopt_results,
+                                                           params_t p)
     {
         using boost::numeric::median;
         vector<y_t> y;
@@ -299,7 +303,6 @@ private:
             }
             iter++;
         }
-        update_optimizer(next, p);
         return next;
     }
 
@@ -360,6 +363,10 @@ private:
         }
         return guess;
     }
+
+    // solution_state_t locate_and_integrate_to_event_no_tracking()
+    // {
+    // }
 };
 
 #endif

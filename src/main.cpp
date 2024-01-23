@@ -23,7 +23,7 @@ constexpr int NUM_Y_DIMS = 1;
 constexpr int NUM_PARAMS = 4;
 
 template <typename T>
-void run_simple_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<T> &optimizer_s)
+void run_simple_example(DAEOSolverSettings<T> solver_s, BNBOptimizerSettings<T> optimizer_s)
 {
     auto f = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
     {
@@ -38,13 +38,20 @@ void run_simple_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<T>
     // using optimizer_t = BNBLocalOptimizer<decltype(h), double, suggested_solver_policies<double>, NUM_Y_DIMS, NUM_PARAMS>;
     using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
     typename solver_t::params_t p(2.0, 1.0, 0.5, pi / 2);
-    
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < 5; i++)
     {
         double dt = pow(10.0, -i);
         solver_t solver(f, h, optimizer_s, solver_s);
         solver.solve_daeo(0, 1, dt, 1.0, p, fmt::format("simple_example_10_minus_{:d}", i));
+    }
+
+    solver_s.EVENT_DETECTION_AND_CORRECTION = false;
+    for (int i = 0; i < 5; i++)
+    {
+        double dt = pow(10.0, -i);
+        solver_t solver(f, h, optimizer_s, solver_s);
+        solver.solve_daeo(0, 1, dt, 1.0, p, fmt::format("simple_example_10_minus_{:d}_noevents", i));
     }
 }
 
@@ -62,11 +69,12 @@ void run_griewank_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<
     };
 
     // using optimizer_t = BNBLocalOptimizer<decltype(h), T, suggested_solver_policies<T>, NUM_Y_DIMS, NUM_PARAMS>;
-    using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
-    typename solver_t::params_t p(5.0);
+    using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, 1, 1>;
+    typename solver_t::params_t p{5.0};
 
     solver_t solver(f, h, optimizer_s, solver_s);
-    solver.solve_daeo(0, 1, 0.05, 1.0, p, "griewank_example");
+    
+    solver.solve_daeo(0., 1., 0.001, 1.0, p, "griewank_example");
 }
 
 int main(int argc, char **argv)
@@ -92,4 +100,5 @@ int main(int argc, char **argv)
     solver_settings.y0_max = 12.0;
 
     run_simple_example(solver_settings, optimizer_settings);
+    run_griewank_example(solver_settings, optimizer_settings);
 }
