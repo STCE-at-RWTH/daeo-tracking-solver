@@ -60,7 +60,7 @@ void run_griewank_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<
 {
     auto f = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
     {
-        return y;
+        return y(0);
     };
 
     auto h = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
@@ -74,7 +74,7 @@ void run_griewank_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<
 
     solver_t solver(f, h, optimizer_s, solver_s);
     
-    solver.solve_daeo(0., 1., 0.001, 1.0, p, "griewank_example");
+    solver.solve_daeo(0., 2., 0.01, 1.0, p, "griewank_example");
 }
 
 int main(int argc, char **argv)
@@ -96,9 +96,9 @@ int main(int argc, char **argv)
     DAEOSolverSettings<double> solver_settings;
     solver_settings.TOL_T = 1.0e-8;
     solver_settings.NEWTON_EPS = 1.0e-8;
-    solver_settings.y0_min = -8.0;
-    solver_settings.y0_max = 12.0;
+    solver_settings.y0_min = 0.0;
+    solver_settings.y0_max = 8.0;
 
-    run_simple_example(solver_settings, optimizer_settings);
+    //run_simple_example(solver_settings, optimizer_settings);
     run_griewank_example(solver_settings, optimizer_settings);
 }

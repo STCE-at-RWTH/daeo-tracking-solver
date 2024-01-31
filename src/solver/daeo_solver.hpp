@@ -74,7 +74,7 @@ public:
                                         params_t const &params, std::string tag = "")
     {
         using clock = std::chrono::high_resolution_clock;
-        vector<solution_state_t> solution_trajctory;
+        vector<solution_state_t> solution_trajectory;
         DAEOSolverLogger logger(tag);
         if (settings.LOGGING_ENABLED)
         {
@@ -102,7 +102,7 @@ public:
         bool event_found;
         while (current.t < t_end)
         {
-            solution_trajctory.push_back(current);
+            solution_trajectory.push_back(current);
             event_found = false; // we have not found an event in this time step (yet).
             next = integrate_daeo(current, dt, params);
             update_optimizer(next, params);
@@ -158,7 +158,7 @@ public:
         {
             logger.log_computation_end(clock::now(), iter, current.t, current.x, current.y, current.i_star);
         }
-        return solution_trajctory;
+        return solution_trajectory;
     }
 
 private:
@@ -353,6 +353,10 @@ private:
             H_value = H(guess, start.i_star, end.i_star, p);
             if (fabs(H_value) < settings.NEWTON_EPS)
             {
+                break;
+            }
+            if (start.t > guess.t || guess.t > end.t){
+                fmt::println("Escaped bounds on event locator!!");
                 break;
             }
             dHdt_value = dHdx(guess, start.i_star, end.i_star, p) * m_xprime.value(guess.t, guess.x, guess.y_star(), p);
