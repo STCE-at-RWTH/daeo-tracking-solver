@@ -30,7 +30,7 @@ struct BNBOptimizerSettings
     std::size_t MAXITER = 100;
     std::size_t MAX_REFINE_ITER = 4;
 
-    bool LOGGING_ENABLED = false;
+    bool LOGGING_ENABLED = true;
 };
 
 template <typename NUMERIC_T>

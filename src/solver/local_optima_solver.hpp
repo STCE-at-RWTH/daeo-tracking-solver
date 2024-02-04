@@ -119,7 +119,6 @@ public:
 
     /**
      * @brief Find minima in @c y of @c h(t,x,y;p) using the set search domain.
-     * Clears internal work queue.
      * @param[in] t
      * @param[in] x
      * @param[in] params

@@ -39,7 +39,7 @@ void run_simple_example(DAEOSolverSettings<T> solver_s, BNBOptimizerSettings<T> 
     using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
     typename solver_t::params_t p(2.0, 1.0, 0.5, pi / 2);
 
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 4; i++)
     {
         double dt = pow(10.0, -i);
         solver_t solver(f, h, optimizer_s, solver_s);
@@ -47,7 +47,7 @@ void run_simple_example(DAEOSolverSettings<T> solver_s, BNBOptimizerSettings<T> 
     }
 
     solver_s.EVENT_DETECTION_AND_CORRECTION = false;
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 4; i++)
     {
         double dt = pow(10.0, -i);
         solver_t solver(f, h, optimizer_s, solver_s);
@@ -73,7 +73,7 @@ void run_griewank_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<
     typename solver_t::params_t p{5.0};
 
     solver_t solver(f, h, optimizer_s, solver_s);
-    
+
     solver.solve_daeo(0., 2., 0.01, 1.0, p, "griewank_example");
 }
 
@@ -89,16 +89,17 @@ int main(int argc, char **argv)
 
     BNBOptimizerSettings<double> optimizer_settings;
     optimizer_settings.TOL_X = 1.0e-6;
-    optimizer_settings.TOL_Y = 1.0e-6;
+    optimizer_settings.TOL_Y = 1.0e-8;
     optimizer_settings.MAXITER = 1000;
     optimizer_settings.MAX_REFINE_ITER = 20;
 
     DAEOSolverSettings<double> solver_settings;
     solver_settings.TOL_T = 1.0e-8;
     solver_settings.NEWTON_EPS = 1.0e-8;
-    solver_settings.y0_min = 0.0;
+    solver_settings.y0_min = -6.0;
     solver_settings.y0_max = 8.0;
+    solver_settings.SEARCH_FREQUENCY = 20;
 
-    //run_simple_example(solver_settings, optimizer_settings);
-    run_griewank_example(solver_settings, optimizer_settings);
+    run_simple_example(solver_settings, optimizer_settings);
+    // run_griewank_example(solver_settings, optimizer_settings);
 }

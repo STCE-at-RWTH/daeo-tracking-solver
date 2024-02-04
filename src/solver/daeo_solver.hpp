@@ -105,7 +105,6 @@ public:
             solution_trajectory.push_back(current);
             event_found = false; // we have not found an event in this time step (yet).
             next = integrate_daeo(current, dt, params);
-            update_optimizer(next, params);
             if (iterations_since_search == settings.SEARCH_FREQUENCY)
             {
                 opt_res = m_optimizer.find_minima_at(next.t, next.x, params, settings.ONLY_GLOBAL_OPTIMIZATION);
@@ -123,11 +122,21 @@ public:
                 // check for event and correct any error that may have accumulated
                 // from the local optimizer tracking
                 event_found = (next.y_star() - from_opt.y_star()).norm() > settings.EVENT_EPS;
+                if (event_found)
+                    fmt::println("event found by gopt");
                 next = std::move(from_opt);
                 iterations_since_search = 0;
             }
-
-            event_found = event_found || current.i_star != next.i_star;
+            else
+            {
+                // checking for events with i_star isn't correct.
+                // z.B we pick up an optimizer at the _beginning_ of next.y
+                // during a global optimizer run
+                // so we have to use a more expensive check
+                // or avoid this simple check when gopt has run
+                update_optimizer(next, params);
+                event_found = next.i_star != current.i_star;
+            }
             // dydt = estimate_dydt(dt, y_k, y_k_next);
             if (settings.EVENT_DETECTION_AND_CORRECTION && event_found)
             {
@@ -169,7 +178,7 @@ private:
 
     /**
      * @brief Create a valid solution state from the results of the global optimizer at (t, x).
-    */
+     */
     solution_state_t solution_state_from_optimizer_results(NUMERIC_T const t, NUMERIC_T const x,
                                                            typename optimizer_t::results_t gopt_results,
                                                            params_t p)
@@ -355,7 +364,8 @@ private:
             {
                 break;
             }
-            if (start.t > guess.t || guess.t > end.t){
+            if (start.t > guess.t || guess.t > end.t)
+            {
                 fmt::println("Escaped bounds on event locator!!");
                 break;
             }
