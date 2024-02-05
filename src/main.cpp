@@ -97,8 +97,8 @@ int main(int argc, char **argv)
     solver_settings.TOL_T = 1.0e-8;
     solver_settings.NEWTON_EPS = 1.0e-8;
     solver_settings.y0_min = -6.0;
-    solver_settings.y0_max = 8.0;
-    solver_settings.SEARCH_FREQUENCY = 20;
+    solver_settings.y0_max = 6.0;
+    solver_settings.SEARCH_FREQUENCY = 1;
 
     run_simple_example(solver_settings, optimizer_settings);
     // run_griewank_example(solver_settings, optimizer_settings);

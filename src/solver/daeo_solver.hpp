@@ -80,7 +80,7 @@ public:
         {
             logger.log_computation_begin(clock::now(), 0, t, dt, x0);
         }
-        fmt::println("Starting to solve DAEO at t={:.4e} with x={:.4e}", t, x0);
+        fmt::println("Starting to solve DAEO at t={:.4e}, x0={:.4e}, and dt={:.4e}", t, x0, dt);
         typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(t, x0, params, settings.ONLY_GLOBAL_OPTIMIZATION);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", opt_res.minima_intervals);
         solution_state_t current, next;
@@ -116,14 +116,14 @@ public:
                 // check if we need to rewind multiple time steps
                 if (from_opt.n_local_optima() != next.n_local_optima())
                 {
-                    fmt::println("OH NO");
+                    fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", from_opt.y);
                 }
 
                 // check for event and correct any error that may have accumulated
                 // from the local optimizer tracking
                 event_found = (next.y_star() - from_opt.y_star()).norm() > settings.EVENT_EPS;
                 if (event_found)
-                    fmt::println("event found by gopt");
+                    fmt::println("  event found by gopt");
                 next = std::move(from_opt);
                 iterations_since_search = 0;
             }
@@ -366,7 +366,7 @@ private:
             }
             if (start.t > guess.t || guess.t > end.t)
             {
-                fmt::println("Escaped bounds on event locator!!");
+                fmt::println("  Escaped bounds on event locator!!");
                 break;
             }
             dHdt_value = dHdx(guess, start.i_star, end.i_star, p) * m_xprime.value(guess.t, guess.x, guess.y_star(), p);
@@ -377,10 +377,6 @@ private:
         }
         return guess;
     }
-
-    // solution_state_t locate_and_integrate_to_event_no_tracking()
-    // {
-    // }
 };
 
 #endif
