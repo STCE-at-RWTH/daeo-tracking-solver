@@ -283,11 +283,12 @@ private:
 
     /**
      * @brief Integrate the differential part of the DAEO from time @c t to @c t+dt
-     * @param[in] start The value of the solution trajectory at @c t=t0
+     * @param[in] start The value of the solution at @c t=t0
+     * @param[in] dt The size of the time step to integrate.
      * @param[in] p Parameter vector.
-     * @return The value of solution trajectory at @c t=t+dt.
+     * @return The value of solution at @c t=t+dt.
      * @details Integrates the ODE using the trapezoidal rule. Additionally solves ∂h/∂y_k = 0
-     * simultaenously. Uses Newton's method.
+     * simultaenously using Newton's method.
      */
     solution_state_t integrate_daeo(solution_state_t const &start, NUMERIC_T dt, params_t const &p)
     {
@@ -321,30 +322,30 @@ private:
     */
 
     /**
-     * @brief Event function between optima @c i1 (current optimum at (t, x))
-     *   and the candidate next optimum @c i2 at (t, x)
+     * @brief Event function between optima @c y1 (current optimum at (t, x))
+     *   and the candidate next optimum @c y2 at (t, x)
      * @param[in] t
      * @param[in] x
-     * @param[in] i1 Index of the first local optimum in @c y_k
-     * @param[in] i2 Index of the second local optimum in @c y_k
-     * @param[in] y_k List of all local optima @c y_k
+     * @param[in] y1 Global optimizer from the beginning of the time step, integrated to @c t
+     * @param[in] y2 Global optimizer at the end of the time step, integrated to @c t
      * @param[in] p Parameter vector.
      */
-    inline NUMERIC_T H(solution_state_t const &state, size_t const i1, size_t const i2, params_t const &p)
+    inline NUMERIC_T H(NUMERIC_T t, NUMERIC_T x, y_t const &y1, y_t const &y2, params_t const &p)
     {
-        return m_objective.value(state.t, state.x, state.y[i1], p) - m_objective.value(state.t, state.x, state.y[i2], p);
+        return m_objective.value(t, x, y1, p) - m_objective.value(t, x, y2, p);
     }
 
     /**
-     * @brief
+     * @brief @b TOTAL derivative of @c H w.r.t. @c x
      */
-    inline NUMERIC_T dHdx(solution_state_t const &state, size_t const i1, size_t const i2, params_t const &p)
+    inline NUMERIC_T dHdx(NUMERIC_T t, NUMERIC_T x, y_t const &y1, y_t const &y2, params_t const &p)
     {
-        return m_objective.grad_x(state.t, state.x, state.y[i1], p) - m_objective.grad_x(state.t, state.x, state.y[i2], p);
+        return m_objective.grad_x(t, x, y1, p) - m_objective.grad_x(t, x, y2, p);
     }
 
     /**
-     * @brief Locate and correct an event that happens between @c start and @c end
+     * @brief Locate and correct an event that happens between @c start and @c end.
+     * We assume that no new optimizers emerge inside this time step!
      * @param[in] start
      * @param[in] end
      * @param[in] p
@@ -352,27 +353,32 @@ private:
      */
     solution_state_t locate_and_integrate_to_event(solution_state_t const &start, solution_state_t const &end, params_t const &p)
     {
-        NUMERIC_T H_value, dHdt_value, dt_guess;
+        NUMERIC_T H_value, dHdt, dt_guess;
         solution_state_t guess;
         dt_guess = (end.t - start.t) / 2;
         size_t iter = 0;
+        bool escaped = false;
         while (iter < settings.MAX_NEWTON_ITERATIONS)
         {
             // integrate to t_guess
             guess = integrate_daeo(start, dt_guess, p);
-            H_value = H(guess, start.i_star, end.i_star, p);
+            // evaluate event function
+            H_value = H(guess.t, guess.x, guess.y[start.i_star], guess.y[end.i_star], p);
             if (fabs(H_value) < settings.NEWTON_EPS)
             {
                 break;
             }
-            if (start.t > guess.t || guess.t > end.t)
+            // only scream once
+            if (!escaped && (start.t > guess.t || guess.t > end.t))
             {
                 fmt::println("  Escaped bounds on event locator!!");
-                break;
+                escaped = true;
             }
-            dHdt_value = dHdx(guess, start.i_star, end.i_star, p) * m_xprime.value(guess.t, guess.x, guess.y_star(), p);
+            dHdt = (dHdx(guess.t, guess.x, guess.y[start.i_star], guess.y[end.i_star], p) *
+                    m_xprime.value(guess.t, guess.x, guess.y_star(), p));
+            // dHdt += partial h partial t at y1 and y2... maybe not necessary.
             // newton iteration.
-            guess.t -= H_value / dHdt_value;
+            guess.t -= H_value / dHdt;
             dt_guess = guess.t - start.t;
             iter++;
         }

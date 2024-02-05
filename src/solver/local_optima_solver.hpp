@@ -91,7 +91,7 @@ private:
     /**
      * @brief The objective function h(t, x, y; p) of which to find the minima.
      */
-    DAEOWrappedFunction<OBJECTIVE_T> const objective;
+    DAEOWrappedFunction<OBJECTIVE_T> const m_objective;
     BNBOptimizerSettings<NUMERIC_T> const settings;
 
     /**
@@ -105,7 +105,7 @@ public:
      */
     BNBLocalOptimizer(OBJECTIVE_T const &t_objective, y_t const &t_LL, y_t const &t_UR,
                       BNBOptimizerSettings<NUMERIC_T> const &t_settings)
-        : objective{t_objective}, settings{t_settings}, initial_search_domain(t_LL.rows())
+        : m_objective{t_objective}, settings{t_settings}, initial_search_domain(t_LL.rows())
     {
         for (int i = 0; i < initial_search_domain.rows(); i++)
         {
@@ -115,7 +115,7 @@ public:
 
     BNBLocalOptimizer(OBJECTIVE_T const &t_objective, y_interval_t const &t_domain,
                       BNBOptimizerSettings<NUMERIC_T> const &t_settings)
-        : objective{t_objective}, settings{t_settings}, initial_search_domain{t_domain} {}
+        : m_objective{t_objective}, settings{t_settings}, initial_search_domain{t_domain} {}
 
     /**
      * @brief Find minima in @c y of @c h(t,x,y;p) using the set search domain.
@@ -141,8 +141,11 @@ public:
         {
             y_interval_t y_i(workq.front());
             workq.pop();
-
-            process_interval(i, t, x, y_i, params, sresults, workq, only_global, logger);
+            // std::queue has no push_range on my GCC
+            for (auto &y_bisected : process_interval(i, t, x, y_i, params, sresults, only_global, logger))
+            {
+                workq.push(std::move(y_bisected));
+            }
             i++;
         }
         auto comp_end = std::chrono::high_resolution_clock::now();
@@ -167,10 +170,9 @@ private:
      * @returns Vector of intervals to be added to the work queue.
      * @details
      */
-    void process_interval(size_t tasknum, NUMERIC_T t, NUMERIC_T x,
-                          y_interval_t const &y_i, params_t const &params,
-                          results_t &sresults, std::queue<y_interval_t> &workq,
-                          bool only_global, BNBOptimizerLogger &logger)
+    vector<y_interval_t> process_interval(size_t tasknum, NUMERIC_T t, NUMERIC_T x,
+                                          y_interval_t const &y_i, params_t const &params,
+                                          results_t &sresults, bool only_global, BNBOptimizerLogger &logger)
     {
         using clock = std::chrono::high_resolution_clock;
         size_t result_code = 0;
@@ -190,7 +192,7 @@ private:
         result_code = result_code | (allconverged ? CONVERGENCE_TEST_PASS : 0);
 
         // value test
-        interval_t h(objective.value(t, x, y_i, params));
+        interval_t h(m_objective.value(t, x, y_i, params));
         if (sresults.optima_upper_bound <= h.lower())
         { // if lower end of interval larger than possible lower bound...
             result_code = result_code | VALUE_TEST_FAIL;
@@ -202,16 +204,17 @@ private:
         }
 
         // first derivative test
-        y_interval_t dhdy(objective.grad_y(t, x, y_i, params));
+        y_interval_t dhdy(m_objective.grad_y(t, x, y_i, params));
         bool grad_pass = std::all_of(dhdy.begin(), dhdy.end(), [](interval_t ival)
                                      { return boost::numeric::zero_in(ival); });
         result_code = result_code | (grad_pass ? GRADIENT_TEST_PASS : GRADIENT_TEST_FAIL);
 
         // second derivative test
-        y_hessian_interval_t d2hdy2(objective.hess_y(t, x, y_i, params));
+        y_hessian_interval_t d2hdy2(m_objective.hess_y(t, x, y_i, params));
         result_code = result_code | hessian_test(d2hdy2);
 
         // take actions based upon test results.
+        vector<y_interval_t> candidate_intervals;
         logger.log_all_tests(clock::now(), tasknum, result_code, y_i, h, dhdy, d2hdy2.rowwise(), dims_converged);
         if ((result_code & VALUE_TEST_FAIL) && only_global)
         {
@@ -229,7 +232,7 @@ private:
             // hessian is SPD -> h(x) on interval is convex
             y_interval_t y_res = narrow_via_bisection(t, x, y_i, params, dims_converged);
             // need to perform value test again with narrowed interval.
-            interval_t h_res = objective.value(t, x, y_res, params);
+            interval_t h_res = m_objective.value(t, x, y_res, params);
             if (only_global && h_res.lower() > sresults.optima_upper_bound)
             {
                 result_code = result_code | VALUE_TEST_FAIL;
@@ -252,15 +255,14 @@ private:
             // second derivative test is inconclusive...
             // interval contains a change of sign in the gradient, but it is not locally convex.
             // therefore, we choose to bisect the interval and continue the search.
-            for (auto &y : bisect_interval(y_i, dims_converged))
-            {
-                workq.push(y);
-            }
+            candidate_intervals = bisect_interval(t, x, y_i, params, dims_converged);
         }
         if (settings.LOGGING_ENABLED)
         {
             logger.log_task_complete(clock::now(), tasknum, y_i, result_code);
         }
+        // return any generated work
+        return candidate_intervals;
     }
 
     /**
@@ -281,36 +283,50 @@ private:
     }
 
     /**
-     * @brief Bisects the n-dimensional range @c x in each dimension that is not flagged in @c dims_converged
+     * @brief Bisects the n-dimensional range @c x in each dimension that is not flagged in @c dims_converged.
+     * Additionally performs a gradient check at the bisection point and discards the LEFT interval if a bisection
+     * happened exactly on the optimizer point.
      * @returns @c vector of n-dimensional intervals post-split
      */
-    vector<y_interval_t> bisect_interval(y_interval_t const &y, vector<bool> const &dims_converged)
+    vector<y_interval_t> bisect_interval(NUMERIC_T t, NUMERIC_T x, y_interval_t const &y,
+                                         params_t const &p, vector<bool> const &dims_converged)
     {
         vector<y_interval_t> res;
+        // construct then assign lets Eigen do its thing.
         res.emplace_back(y.rows());
         res[0] = y;
-        if (!dims_converged[0])
-        {
-            NUMERIC_T m = median(res[0](0));
-            res.emplace_back(y.rows());
-            res.back() = y;
-            res[0](0).assign(res[0](0).lower(), m);
-            res.back()(0).assign(m, res.back()(0).upper());
-        }
-        for (int i = 1; i < y.rows(); i++)
+        // why did I do this.? merge into the for loop
+        // if (!dims_converged[0])
+        // {
+        //     NUMERIC_T m = median(res[0](0));
+        //     res.emplace_back(y.rows());
+        //     res.back() = y;
+        //     res[0](0).assign(res[0](0).lower(), m);
+        //     res.back()(0).assign(m, res.back()(0).upper());
+        // }
+        for (int i = 0; i < y.rows(); i++)
         {
             if (dims_converged[i])
             {
                 continue;
             }
             size_t result_size = res.size();
-            NUMERIC_T m = median(res[0](i));
+            NUMERIC_T m = median(y(i));
             for (size_t j = 0; j < result_size; j++)
             {
-                res.emplace_back(y.rows());
-                res.back() = y;
-                res[j](i).assign(res[j](i).lower(), m);
-                res.back()(i).assign(m, res.back()(i).upper());
+                // check right side first
+                res[j](i).assign(m, res[j](i).upper());
+                // do derivative test at the split
+                interval_t dyi = m_objective.grad_y(t, x, res[j], p)(i);
+                if(dyi < std::numeric_limits<NUMERIC_T>::epsilon()){
+                    res[j](i) = m;
+                }
+                else
+                {
+                    res.emplace_back(y.rows());
+                    res.back() = y;
+                    res.back()(i).assign(res.back()(i).lower(), m);
+                }
             }
         }
         // fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
@@ -342,7 +358,7 @@ private:
                 y_m(i) = median(y(i));
             }
             // objective_gradient(t, x, y_m, params, temp, midgrad);
-            gradient_y_m = objective.grad_y(t, x, y_m, params);
+            gradient_y_m = m_objective.grad_y(t, x, y_m, params);
             for (int i = 0; i < y.size(); i++)
             {
                 if (!dimsconverged[i])
