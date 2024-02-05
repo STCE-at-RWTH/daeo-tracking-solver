@@ -1,7 +1,7 @@
 /**
  * @file settings.hpp
  * @author Sasha [fleming@stce.rwth-aachen.de]
- * @brief Defines the configuration and logging options for @ref local_optima_bnp.hpp and @ref daeo_solver.hpp
+ * @brief Defines the configuration and logging options for @ref local_optima_solver.hpp and @ref daeo_solver.hpp
  */
 
 #ifndef _SOLVER_SETTINGS_HPP

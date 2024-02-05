@@ -1,6 +1,7 @@
 /**
  * @file daeo_solver.hpp
  * @author Sasha [fleming@stce.rwth-aachen.de]
+ * @brief Implementation of solver for Differential-Algebriac Equations with Embedded Optimization Criteria.
  */
 #ifndef _DAEO_SOLVER_HPP
 #define _DAEO_SOLVER_HPP

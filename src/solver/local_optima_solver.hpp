@@ -1,7 +1,7 @@
 /**
  * @file local_optima_solver.hpp
  * @author Sasha [fleming@stce.rwth-aachen.de]
- * @brief Implementation of a branch and bound solver to find regions containing local optima of f(x; p).
+ * @brief Implementation of a branch and bound optimizer to find regions containing local optima of f(x; p).
  */
 #ifndef _LOCAL_OPTIMA_BNB_HPP // header guard
 #define _LOCAL_OPTIMA_BNB_HPP

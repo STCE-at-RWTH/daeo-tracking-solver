@@ -1,5 +1,7 @@
 /**
- *
+ * @file daeo_solver.hpp
+ * @author Sasha [fleming@stce.rwth-aachen.de]
+ * @brief Logging utilities for the solver and optimizer.
  */
 #ifndef _SOLVER_LOGGING_HPP
 #define _SOLVER_LOGGING_HPP

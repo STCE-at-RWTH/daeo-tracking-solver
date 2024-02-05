@@ -1,3 +1,8 @@
+/**
+ * @file daeo_solver.hpp
+ * @author Sasha [fleming@stce.rwth-aachen.de]
+ * @brief Wrapper classes for functions of the form f(t, x, y, p).
+ */
 #ifndef _FUNCTION_WRAPPER_HPP
 #define _FUNCTION_WRAPPER_HPP
 
@@ -10,7 +15,8 @@
 #include "dco.hpp"
 
 /**
- * @brief Wraps a function
+ * @brief Wraps a function of the form f(t, x, y, p) for use with the optimizer and solver.
+ * Assumes that the return type of f is a scalar and matches the type of scalar y.
  */
 template <typename FN>
 class DAEOWrappedFunction
