@@ -292,18 +292,8 @@ private:
                                          params_t const &p, vector<bool> const &dims_converged)
     {
         vector<y_interval_t> res;
-        // construct then assign lets Eigen do its thing.
         res.emplace_back(y.rows());
         res[0] = y;
-        // why did I do this.? merge into the for loop
-        // if (!dims_converged[0])
-        // {
-        //     NUMERIC_T m = median(res[0](0));
-        //     res.emplace_back(y.rows());
-        //     res.back() = y;
-        //     res[0](0).assign(res[0](0).lower(), m);
-        //     res.back()(0).assign(m, res.back()(0).upper());
-        // }
         for (int i = 0; i < y.rows(); i++)
         {
             if (dims_converged[i])
@@ -316,17 +306,19 @@ private:
             {
                 // check right side first
                 res[j](i).assign(m, res[j](i).upper());
-                // do derivative test at the split
-                interval_t dyi = m_objective.grad_y(t, x, res[j], p)(i);
-                if(dyi < std::numeric_limits<NUMERIC_T>::epsilon()){
-                    res[j](i) = m;
-                }
-                else
-                {
-                    res.emplace_back(y.rows());
-                    res.back() = y;
-                    res.back()(i).assign(res.back()(i).lower(), m);
-                }
+                // this check needs some work.
+                // // do derivative test at the split
+                // // if gradient in dimension i is nonnegative and its lower bound is zero
+                // // then we split at the minimizer
+                // interval_t dyi = m_objective.grad_y(t, x, res[j], p)(i);
+                // if (nonnegative(dyi) && dyi.lower() < std::numeric_limits<NUMERIC_T>::epsilon())
+                // {
+                //     continue;
+                // }
+                // // do the split
+                res.emplace_back(y.rows());
+                res.back() = y;
+                res.back()(i).assign(res.back()(i).lower(), m);
             }
         }
         // fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);

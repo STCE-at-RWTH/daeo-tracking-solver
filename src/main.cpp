@@ -74,7 +74,7 @@ void run_griewank_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<
 
     solver_t solver(f, h, optimizer_s, solver_s);
 
-    solver.solve_daeo(0., 2., 0.01, 1.0, p, "griewank_example");
+    solver.solve_daeo(0., 2., 0.0005, 1.0, p, "griewank_example");
 }
 
 int main(int argc, char **argv)
@@ -93,13 +93,17 @@ int main(int argc, char **argv)
     optimizer_settings.MAXITER = 1000;
     optimizer_settings.MAX_REFINE_ITER = 20;
 
-    DAEOSolverSettings<double> solver_settings;
-    solver_settings.TOL_T = 1.0e-8;
-    solver_settings.NEWTON_EPS = 1.0e-8;
-    solver_settings.y0_min = -6.0;
-    solver_settings.y0_max = 6.0;
-    solver_settings.SEARCH_FREQUENCY = 1;
+    DAEOSolverSettings<double> simple_solver_settings;
+    simple_solver_settings.TOL_T = 1.0e-8;
+    simple_solver_settings.NEWTON_EPS = 1.0e-8;
+    simple_solver_settings.y0_min = -6.0;
+    simple_solver_settings.y0_max = 6.0;
+    simple_solver_settings.SEARCH_FREQUENCY = 1;
 
-    run_simple_example(solver_settings, optimizer_settings);
-    // run_griewank_example(solver_settings, optimizer_settings);
+    DAEOSolverSettings<double> griewank_solver_settings = simple_solver_settings;
+    griewank_solver_settings.SEARCH_FREQUENCY = 10;
+    griewank_solver_settings.y0_min = 0.0;
+
+    //run_simple_example(simple_solver_settings, optimizer_settings);
+    run_griewank_example(griewank_solver_settings, optimizer_settings);
 }

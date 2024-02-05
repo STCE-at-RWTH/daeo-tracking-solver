@@ -117,6 +117,7 @@ public:
                 // check if we need to rewind multiple time steps
                 if (from_opt.n_local_optima() != next.n_local_optima())
                 {
+                    fmt::println("  Checking identity of new optima at t={:.2e}", from_opt.t);
                     fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", from_opt.y);
                 }
 
@@ -141,8 +142,10 @@ public:
             // dydt = estimate_dydt(dt, y_k, y_k_next);
             if (settings.EVENT_DETECTION_AND_CORRECTION && event_found)
             {
+                fmt::println("  Detected global optimzer switch between (t={:.2e}, y={::.4e}) and (t={:.2e}, y={::.4e})",
+                             current.t, current.y_star(), next.t, next.y_star());
                 // locate the event and take a time step to it
-                solution_state_t event = locate_and_integrate_to_event(current, next, params);
+                solution_state_t event = locate_and_integrate_to_event_newton(current, next, params);
                 NUMERIC_T dt_event = event.t - current.t;
                 if (settings.LOGGING_ENABLED)
                 {
@@ -225,6 +228,41 @@ private:
             dy[i] = (y_next[i] - y[i]);
         }
         return dy;
+    }
+
+    solution_state_t correct_added_optimizer_permutation(solution_state_t const &s1, solution_state_t const &s2)
+    {
+        size_t n_added = s2.n_local_optima() - s1.n_local_optima();
+        vector<size_t> permutation(s1.n_local_optima());
+        for (size_t i = 0; i < s1.n_local_optima(); i++)
+        {
+            for (size_t j = 0; j < s2.n_local_optima(); j++)
+            {
+                // we reuse event eps here since it represents "acceptable accumulated integration error"
+                if((s2.y[j] - s1.y[i]).norm() < settings.EVENT_EPS){
+                    permutation[i] = j;
+                }
+            }
+        }
+        vector<y_t> permuted(s2.n_local_optima());
+        
+
+    }
+
+    solution_state_t find_removed_optimizer_permutation(solution_state_t const &s1, solution_state_t const &s2)
+    {
+        size_t n_removed = s1.n_local_optima() - s2.n_local_optima();
+        vector<size_t> permutation(s2.n_local_optima());
+        for (size_t i = 0; i < s2.n_local_optima(); i++)
+        {
+            for (size_t j = 0; j < s1.n_local_optima(); j++)
+            {
+                // we reuse event eps here since it represents "acceptable accumulated integration error"
+                if((s2.y[j] - s1.y[i]).norm() < settings.EVENT_EPS){
+                    permutation[i] = j;
+                }
+            }
+        }
     }
 
     /*
@@ -351,7 +389,7 @@ private:
      * @param[in] p
      * @return Value of solution at event.
      */
-    solution_state_t locate_and_integrate_to_event(solution_state_t const &start, solution_state_t const &end, params_t const &p)
+    solution_state_t locate_and_integrate_to_event_newton(solution_state_t const &start, solution_state_t const &end, params_t const &p)
     {
         NUMERIC_T H_value, dHdt, dt_guess;
         solution_state_t guess;
@@ -373,6 +411,8 @@ private:
             {
                 fmt::println("  Escaped bounds on event locator!!");
                 escaped = true;
+                // breaking may save us here.
+                break;
             }
             dHdt = (dHdx(guess.t, guess.x, guess.y[start.i_star], guess.y[end.i_star], p) *
                     m_xprime.value(guess.t, guess.x, guess.y_star(), p));
@@ -383,6 +423,9 @@ private:
             iter++;
         }
         return guess;
+    }
+    solution_state_t locate_and_integrate_to_event_bisect(solution_state_t const &start, solution_state_t const &end, params_t const &p)
+    {
     }
 };
 
