@@ -31,15 +31,15 @@ data_file_directory = normpath(joinpath(pwd(), "../data/out"))
 # ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
 row_selector = ∈(Int.((SOLVER_BEGIN, TIME_STEP_NO_EVENT, TIME_STEP_EVENT_CORRECTED)))
 
-# ╔═╡ f4cda422-6bb2-4c9f-acce-500be251a9d0
-l1_norm(x, dt) = 0.5 * sum(dt .* (abs.(x[1:end-1]) + abs.(x[2:end])))
-
 # ╔═╡ a36bf3e6-81e5-4d84-8181-5418fd061b6f
 function x1_exact(t)
 	t_event = -log(0.5)/3
 	A = -2 * t_event
 	return t < t_event ? exp(-3*t) : exp(-t + A)
 end
+
+# ╔═╡ f4cda422-6bb2-4c9f-acce-500be251a9d0
+l1_norm(x, dt) = 0.5 * sum(dt .* (abs.(x[1:end-1]) + abs.(x[2:end])))
 
 # ╔═╡ bdabfe2f-f2a8-4441-9d95-a2f75fa223da
 function make_data(file)
@@ -55,9 +55,6 @@ end
 # ╔═╡ c4520e37-b3bb-44f5-ae8b-5bac3806c384
 with_events = map(make_data, joinpath(data_file_directory, "simple_example_10_minus_$(i)_solver_log.tsv") for i=0:6);
 
-# ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
-without_events = map(make_data, joinpath(data_file_directory, "simple_example_10_minus_$(i)_noevents_solver_log.tsv") for i=0:6);
-
 # ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
 let
 	p = plot(0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
@@ -66,11 +63,27 @@ let
 	p
 end
 
+# ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
+without_events = map(make_data, joinpath(data_file_directory, "simple_example_10_minus_$(i)_noevents_solver_log.tsv") for i=0:6);
+
 # ╔═╡ 43ee777f-8b59-402e-9ee2-1066d4127b41
 let
 	p = scatter(getindex.(with_events, 3), getindex.(with_events, 4), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:+, msw=2, legend=:topleft, label="With Event Correction", xlabel=L"\Delta t")
 	scatter!(p, getindex.(without_events, 3), getindex.(without_events, 4), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:x, msw=2, label="Without Event Correction", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}")
 end
+
+# ╔═╡ de7bffb5-703b-486f-8eba-320cd49799c7
+md"""
+There's a problem here... both the solutions converge (good) with *the same order* (bad).
+
+Possible explanations:
+- ``L^1`` quadrature is too low order and the integration error dominates. 
+  - Quick fix: implement Simpson's rule.
+- The "simple example" is too simple, and doesn't actually need event treatment!
+  - Quick fix: choose a more complex example with ``\partial_t y \neq 0``
+- The integrator itself is of too low order.
+  - Less quick fix: change to an order 3+ integration step (Runge-Kutta?)
+"""
 
 # ╔═╡ 2224d08f-89a2-46e0-b874-9deffeb5d2f2
 md"""
@@ -1309,10 +1322,11 @@ version = "1.4.1+1"
 # ╠═bdabfe2f-f2a8-4441-9d95-a2f75fa223da
 # ╠═c4520e37-b3bb-44f5-ae8b-5bac3806c384
 # ╠═a2806825-6c18-4659-9021-9f1bc5648d98
-# ╠═f4cda422-6bb2-4c9f-acce-500be251a9d0
-# ╠═a36bf3e6-81e5-4d84-8181-5418fd061b6f
 # ╟─baa48d9b-50e3-458e-8105-568d96453209
+# ╠═a36bf3e6-81e5-4d84-8181-5418fd061b6f
 # ╟─43ee777f-8b59-402e-9ee2-1066d4127b41
+# ╠═f4cda422-6bb2-4c9f-acce-500be251a9d0
+# ╟─de7bffb5-703b-486f-8eba-320cd49799c7
 # ╟─2224d08f-89a2-46e0-b874-9deffeb5d2f2
 # ╟─d07841d5-0a52-4075-94a1-02606e3feeb6
 # ╠═a6f1a87e-73c2-41c6-8e60-e483157ab4a6
