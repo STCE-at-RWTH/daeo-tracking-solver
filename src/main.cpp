@@ -39,7 +39,7 @@ void run_simple_example(DAEOSolverSettings<T> solver_s, BNBOptimizerSettings<T> 
     using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
     typename solver_t::params_t p(2.0, 1.0, 0.5, pi / 2);
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 7; i++)
     {
         double dt = pow(10.0, -i);
         solver_t solver(f, h, optimizer_s, solver_s);
@@ -47,7 +47,7 @@ void run_simple_example(DAEOSolverSettings<T> solver_s, BNBOptimizerSettings<T> 
     }
 
     solver_s.EVENT_DETECTION_AND_CORRECTION = false;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 7; i++)
     {
         double dt = pow(10.0, -i);
         solver_t solver(f, h, optimizer_s, solver_s);
@@ -74,7 +74,59 @@ void run_griewank_example(DAEOSolverSettings<T> &solver_s, BNBOptimizerSettings<
 
     solver_t solver(f, h, optimizer_s, solver_s);
 
-    solver.solve_daeo(0., 2., 0.0005, 1.0, p, "griewank_example");
+    solver.solve_daeo(0., 1.5, 0.00005, 1.0, p, "griewank_example");
+}
+
+void run_simple_example_perf_study()
+{
+    auto f = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
+    {
+        return -(p(0) + y(0)) * x;
+    };
+
+    auto h = [](const auto t, const auto x, const auto &y, const auto &p) -> auto
+    {
+        return pow(p(1) - pow(y(0), 2), 2) - (x - p(2)) * sin(y(0) * p(3));
+    };
+
+    // using optimizer_t = BNBLocalOptimizer<decltype(h), double, suggested_solver_policies<double>, NUM_Y_DIMS, NUM_PARAMS>;
+    using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, NUM_Y_DIMS, NUM_PARAMS>;
+    typename solver_t::params_t p(2.0, 1.0, 0.5, pi / 2);
+
+    DAEOSolverSettings<double> solver_s;
+    solver_s.NEWTON_EPS = 1.0e-8;
+    solver_s.EVENT_EPS = 5.0e-6;
+    solver_s.y0_min = -6.0;
+    solver_s.y0_max = 6.0;
+
+    BNBOptimizerSettings<double> opt_s;
+    opt_s.TOL_X = 1.0e-6;
+    opt_s.TOL_Y = 1.0e-8;
+    opt_s.MAXITER = 1000;
+    opt_s.MAX_REFINE_ITER = 20;
+    opt_s.LOGGING_ENABLED = false;
+
+    /**
+     * TRACK LOCAL, NEVER REOPTIMIZE
+     */
+    solver_s.SEARCH_FREQUENCY = std::numeric_limits<size_t>::max();
+    solver_s.EVENT_DETECTION_AND_CORRECTION = true;
+    solver_s.ONLY_GLOBAL_OPTIMIZATION = false;
+
+    for (int i = 1; i < 7; i++)
+    {
+        double dt = pow(10.0, -i);
+        solver_t solver(f, h, opt_s, solver_s);
+        solver.solve_daeo(0, 1, dt, 1.0, p, fmt::format("se_tracking_10_minus{:d}", i));
+    }
+
+    /**
+     * TRACK ONLY GLOBAL
+    */
+
+    for (int i = 1; i<7; i++){
+        double dt = pow(10.0, -i);
+    }
 }
 
 int main(int argc, char **argv)
@@ -92,18 +144,19 @@ int main(int argc, char **argv)
     optimizer_settings.TOL_Y = 1.0e-8;
     optimizer_settings.MAXITER = 1000;
     optimizer_settings.MAX_REFINE_ITER = 20;
+    optimizer_settings.LOGGING_ENABLED = false;
 
     DAEOSolverSettings<double> simple_solver_settings;
-    simple_solver_settings.TOL_T = 1.0e-8;
     simple_solver_settings.NEWTON_EPS = 1.0e-8;
+    simple_solver_settings.EVENT_EPS = 5.0e-6;
     simple_solver_settings.y0_min = -6.0;
     simple_solver_settings.y0_max = 6.0;
-    simple_solver_settings.SEARCH_FREQUENCY = 1;
+    simple_solver_settings.SEARCH_FREQUENCY = 1000000000000000;
 
     DAEOSolverSettings<double> griewank_solver_settings = simple_solver_settings;
-    griewank_solver_settings.SEARCH_FREQUENCY = 10;
+    griewank_solver_settings.SEARCH_FREQUENCY = 50;
     griewank_solver_settings.y0_min = 0.0;
 
-    //run_simple_example(simple_solver_settings, optimizer_settings);
-    run_griewank_example(griewank_solver_settings, optimizer_settings);
+    run_simple_example(simple_solver_settings, optimizer_settings);
+    // run_griewank_example(griewank_solver_settings, optimizer_settings);
 }

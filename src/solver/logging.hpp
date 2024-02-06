@@ -101,15 +101,15 @@ public:
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, 0, 0);
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, domain);
-        fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
+        fmt::print(outs[threadid], "\t\t\t\n");
     }
 
     void log_computation_end(sys_time_point_t time, size_t tasknum, size_t n_results, size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, OPTIMIZATION_COMPLETE, n_results);
-        fmt::print(outs[threadid], "None\t");
-        fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
+        fmt::print(outs[threadid], "\t");
+        fmt::print(outs[threadid], "\t\t\t\n");
     }
 
     template <std::ranges::range Y>
@@ -118,7 +118,7 @@ public:
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_BEGIN, 0);
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
-        fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
+        fmt::print(outs[threadid], "\t\t\t\n");
     }
 
     template <std::ranges::range Y>
@@ -127,14 +127,14 @@ public:
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_COMPLETE, reason);
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
-        fmt::print(outs[threadid], "None\tNone\tNone\tNone\n");
+        fmt::print(outs[threadid], "\t\t\t\n");
     }
 
     void log_convergence_test(sys_time_point_t time, size_t tasknum, vector<bool> const &convergence, size_t threadid = 0)
     {
         fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, time - m_logging_start);
         fmt::print(outs[threadid], LOG_EID_EXTRA, CONVERGENCE_TEST, 0);
-        fmt::print(outs[threadid], "None\tNone\tNone\tNone\t{::d}\n", convergence);
+        fmt::print(outs[threadid], "\t\t\t\t{::d}\n", convergence);
     }
 
     template <typename T, std::ranges::range Y, std::ranges::range DHDY>
@@ -147,7 +147,7 @@ public:
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdy);
-        fmt::print(outs[threadid], "None\tNone\n");
+        fmt::print(outs[threadid], "\t\n");
     }
 
     /**
@@ -166,7 +166,7 @@ public:
         fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
         fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, dhdy);
         fmt::print(outs[threadid], LOG_MATRIX_NUMERIC_VALS, d2hdy2);
-        fmt::print(outs[threadid], "None\n");
+        fmt::print(outs[threadid], "\n");
     }
 
     /**
@@ -231,7 +231,7 @@ public:
         fmt::print(out, LOG_NUMERIC_VAL, dt0);
         fmt::print(out, LOG_NUMERIC_VAL, x0);
         // no dx, no y, no dy, no i_star
-        fmt::print(out, "None\tNone\tNone\t0\n");
+        fmt::print(out, "\t\t\t0\n");
     }
 
     template <typename T, std::ranges::range Y>
@@ -242,13 +242,13 @@ public:
         fmt::print(out, LOG_EID_EXTRA, SOLVER_COMPLETE, 0);
         fmt::print(out, LOG_NUMERIC_VAL, t);
         // no dt
-        fmt::print(out, "None\t");
+        fmt::print(out, "\t");
         fmt::print(out, LOG_NUMERIC_VAL, x);
         // no dx
-        fmt::print(out, "None\t");
+        fmt::print(out, "\t");
         fmt::print(out, LOG_MATRIX_NUMERIC_VALS, y);
         // no dy
-        fmt::print(out, "None\t");
+        fmt::print(out, "\t");
         fmt::println(out, LOG_INTEGER_VAL, i_star);
     }
 
@@ -260,13 +260,13 @@ public:
         fmt::print(out, LOG_EID_EXTRA, OPTIMIZE, 0);
         fmt::print(out, LOG_NUMERIC_VAL, t);
         // no dt
-        fmt::print(out, "None\t");
+        fmt::print(out, "\t");
         fmt::print(out, LOG_NUMERIC_VAL, x);
         // no dx
-        fmt::print(out, "None\t");
+        fmt::print(out, "\t");
         fmt::print(out, LOG_MATRIX_NUMERIC_VALS, y);
         // no dy
-        fmt::print(out, "None\t");
+        fmt::print(out, "\t");
         fmt::println(out, LOG_INTEGER_VAL, i_star);
     }
 

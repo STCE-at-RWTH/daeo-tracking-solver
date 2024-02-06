@@ -115,10 +115,21 @@ public:
                     logger.log_global_optimization(clock::now(), iter, from_opt.t, from_opt.x, from_opt.y, from_opt.i_star);
                 }
                 // check if we need to rewind multiple time steps
-                if (from_opt.n_local_optima() != next.n_local_optima())
+                fmt::println("  Checking identity of new optima at t={:.2e}", from_opt.t);
+                fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", from_opt.y);
+                if (from_opt.n_local_optima() <= current.n_local_optima())
                 {
-                    fmt::println("  Checking identity of new optima at t={:.2e}", from_opt.t);
-                    fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", from_opt.y);
+                    correct_optimizer_permutation(from_opt, current);
+                    fmt::println("  Optimizer may have vanished.");
+                    fmt::println("  Reordered optima to match {:::.4e}", from_opt.y);
+                    fmt::println("               new order is {:::.4e}", current.y);
+                }
+                else
+                {
+                    correct_optimizer_permutation(current, from_opt);
+                    fmt::println("  Optimizer emerged.");
+                    fmt::println("  Reordered optima to match {:::.4e}", current.y);
+                    fmt::println("               new order is {:::.4e}", from_opt.y);
                 }
 
                 // check for event and correct any error that may have accumulated
@@ -230,37 +241,26 @@ private:
         return dy;
     }
 
-    solution_state_t correct_added_optimizer_permutation(solution_state_t const &s1, solution_state_t const &s2)
+    void correct_optimizer_permutation(solution_state_t const &fewer_optimizers, solution_state_t &more_optimizers)
     {
-        size_t n_added = s2.n_local_optima() - s1.n_local_optima();
-        vector<size_t> permutation(s1.n_local_optima());
-        for (size_t i = 0; i < s1.n_local_optima(); i++)
+        vector<size_t> permutation(fewer_optimizers.n_local_optima());
+        for (size_t i = 0; i < permutation.size(); i++)
         {
-            for (size_t j = 0; j < s2.n_local_optima(); j++)
+            for (size_t j = 0; j < more_optimizers.n_local_optima(); j++)
             {
                 // we reuse event eps here since it represents "acceptable accumulated integration error"
-                if((s2.y[j] - s1.y[i]).norm() < settings.EVENT_EPS){
+                if ((more_optimizers.y[j] - fewer_optimizers.y[i]).norm() < settings.EVENT_EPS)
+                {
                     permutation[i] = j;
                 }
             }
         }
-        vector<y_t> permuted(s2.n_local_optima());
-        
-
-    }
-
-    solution_state_t find_removed_optimizer_permutation(solution_state_t const &s1, solution_state_t const &s2)
-    {
-        size_t n_removed = s1.n_local_optima() - s2.n_local_optima();
-        vector<size_t> permutation(s2.n_local_optima());
-        for (size_t i = 0; i < s2.n_local_optima(); i++)
+        for (size_t i = 0; i < permutation.size(); i++)
         {
-            for (size_t j = 0; j < s1.n_local_optima(); j++)
+            std::swap(more_optimizers.y[i], more_optimizers.y[permutation[i]]);
+            if (i == more_optimizers.i_star)
             {
-                // we reuse event eps here since it represents "acceptable accumulated integration error"
-                if((s2.y[j] - s1.y[i]).norm() < settings.EVENT_EPS){
-                    permutation[i] = j;
-                }
+                more_optimizers.i_star = permutation[i];
             }
         }
     }

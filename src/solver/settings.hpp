@@ -36,17 +36,15 @@ struct BNBOptimizerSettings
 template <typename NUMERIC_T>
 struct DAEOSolverSettings
 {
-    NUMERIC_T TOL_T;
-
     NUMERIC_T y0_min;
     NUMERIC_T y0_max;
 
     size_t SEARCH_FREQUENCY = 20;
     size_t MAX_NEWTON_ITERATIONS = 40;
-    NUMERIC_T NEWTON_EPS = 1.0e-6;
-    NUMERIC_T EVENT_EPS = 1.0e-4; // this may be computeable from limits
+    NUMERIC_T NEWTON_EPS = 1.0e-8;
+    NUMERIC_T EVENT_EPS = 5.0e-6; // this may be computeable from limits
 
-    bool RUN_GLOBAL_OPT_AT_EVENTS = false;
+    bool TRACK_LOCAL_OPTIMA = true;
     bool EVENT_DETECTION_AND_CORRECTION = true;
     bool LOGGING_ENABLED = true;
     bool ONLY_GLOBAL_OPTIMIZATION = false;
