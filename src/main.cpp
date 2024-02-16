@@ -161,7 +161,7 @@ void simple_example_perf_study()
     for (int i = 1; i<6; i++){
         double dt = pow(10.0, -i);
         solver_t solver(f, h, opt_s, solver_s);
-        solver.solve_daeo(0, 1, dt, 1.0, p, fmt::format("se_tracking_onlyglobal_10_minus{:d}", i));
+        //solver.solve_daeo(0, 1, dt, 1.0, p, fmt::format("se_tracking_onlyglobal_10_minus{:d}", i));
     }
 
     /**
@@ -175,12 +175,11 @@ int main(int argc, char **argv)
     /* Implement the scenario described in
      *  Numerical simulation of differential-algebraic equations
      *    with embedded global optimization criteria [Deussen, Hüser, Naumann]
-     *
      */
 
     fmt::println("double epsilon is {:.6e}", std::numeric_limits<double>::epsilon());
     fmt::println("*** simple example time ***");
     simple_example_perf_study();
     fmt::println("*** griewank time ***");
-    griewank_example_event_tolerance_study();
+    //griewank_example_event_tolerance_study();
 }

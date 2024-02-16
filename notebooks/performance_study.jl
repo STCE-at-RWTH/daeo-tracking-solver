@@ -60,23 +60,12 @@ md"""
 # Event Correction
 """
 
-# ╔═╡ 7de10fca-3f6b-4d01-aea4-7e060abe98cf
-filter(without_events[3].rowiter()) do 
-
 # ╔═╡ a36bf3e6-81e5-4d84-8181-5418fd061b6f
 function x1_exact(t)
 	t_event = -log(0.5)/3
 	A = -2 * t_event
 	return t < t_event ? exp(-3*t) : exp(-t + A)
 end
-
-# ╔═╡ d5a8151b-f6ab-43ba-be86-9e04f9cecf11
-let
-	
-end
-
-# ╔═╡ f4cda422-6bb2-4c9f-acce-500be251a9d0
-l1_norm(x, dt) = 0.5 * sum(dt .* (abs.(x[1:end-1]) + abs.(x[2:end])))
 
 # ╔═╡ de7bffb5-703b-486f-8eba-320cd49799c7
 md"""
@@ -90,6 +79,14 @@ Possible explanations:
 - The integrator itself is of too low order.
   - Less quick fix: change to an order 3+ integration step (Runge-Kutta?)
 """
+
+# ╔═╡ d5a8151b-f6ab-43ba-be86-9e04f9cecf11
+let
+	
+end
+
+# ╔═╡ f4cda422-6bb2-4c9f-acce-500be251a9d0
+l1_norm(x, dt) = 0.5 * sum(dt .* (abs.(x[1:end-1]) + abs.(x[2:end])))
 
 # ╔═╡ 2224d08f-89a2-46e0-b874-9deffeb5d2f2
 md"""
@@ -176,11 +173,16 @@ without_events = map(joinpath(data_file_directory, "simple_example_10_minus_$(i)
 	make_data(file) |> simple_ex_err_transform 
 end;
 
+# ╔═╡ 7de10fca-3f6b-4d01-aea4-7e060abe98cf
+filter(without_events[3]) do row
+	row.EVENTID == TIME_STEP_EVENT_CORRECTED
+end
+
 # ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
 let
 	p = plot(0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
-	plot!(p, with_events[3].T[1:end-1], with_events[3].X[1:end-1], style=:dashdot, label=L"x_{ev}(t)")
-	plot!(p, without_events[3].T, without_events[3].X, style=:dashdot, label=L"x_{noev}(t)")
+	scatter!(p, with_events[2].T[1:end-1], with_events[2].X[1:end-1], label=L"x_{ev}(t)", marker=:plus, msw=2)
+	scatter!(p, without_events[2].T, without_events[2].X, label=L"x_{noev}(t)", marker=:x)
 	title!(p, "Simple Example; Computed vs. Exact; "*L"dt=0.1")
 	p
 end

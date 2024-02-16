@@ -2,6 +2,9 @@
 build
 .vscode
 
+#clangd cache
+.cache
+
 # ipython directories
 .ipynb_checkpoints
 __pycache__
