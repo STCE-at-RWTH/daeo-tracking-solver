@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.38
+# v0.19.37
 
 using Markdown
 using InteractiveUtils
@@ -15,21 +15,53 @@ begin
 	using PlutoUI
 end
 
-# ╔═╡ 0ec705dd-58a2-48c0-a41b-b4d9736056d4
-@enum SolverEvents begin 
-	SOLVER_BEGIN 
-	SOLVER_COMPLETE 
-	TIME_STEP_NO_EVENT 
-	TIME_STEP_EVENT_CORRECTED 
-	OPTIMIZE 
-	OPTIMUM_CHANGE
-end
+# ╔═╡ 3bb6f7d5-d76a-4c1f-af95-777dea2b342f
+md"""
+# Problem Setting
 
-# ╔═╡ a936713d-da19-45de-99e8-b3ab835c2beb
-data_file_directory = normpath(joinpath(pwd(), "../data/out"))
+```math
+\DeclareMathOperator*{\argmin}{\arg\min}
+\begin{aligned}
+	x(0) &= x_0 \\
+	\dot x &= f(t, x, y^\star) \\
+	y^\star(t) &= \argmin_y\,h(x,y)
+\end{aligned}
+```
 
-# ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
-row_selector = ∈(Int.((SOLVER_BEGIN, TIME_STEP_NO_EVENT, TIME_STEP_EVENT_CORRECTED)))
+We'll restrict to the following (for now)...
+- ``x,y\in\mathbb R``
+- ``f, h`` are twice Lipshitz continuous
+
+The standard methods for solving these types of problems involve solving a complex non-linear problem at every time step ``t^k``. We propose separating the problem into a differential part and an optimization part:
+
+1. Integrate ``f``, while also specifying that each local optimizer of ``h`` must remain a local optimizer at ``t^{k+1}``.
+2. Check if the identity of the global optimizer has changed during the previous time step, and correct the 'event' if necessary.
+3. Repeat.
+"""
+
+# ╔═╡ 5623f375-8391-4f68-9937-9289406332f9
+md"""
+# Work Package 5
+Work Package 5 (from the DFG project) wishes to deliver:
+- A global optimizer specialized for the solution of DAEOs.
+- A publication presenting the efficiency of this solver/optimizer applied to some examples.
+
+So far, we have:
+1. A modified branch-and-bound global optimizer that returns a list of bounding boxes local optima.
+2. An integrator that can operate on this information.
+3. An event detection and correction procedure.
+"""
+
+# ╔═╡ fbda8d1d-eb22-442c-a908-7ab1bb76bec8
+
+
+# ╔═╡ 7b47bd51-c459-49b7-9d94-2724a3a29bf9
+md"""
+# Event Correction
+"""
+
+# ╔═╡ 7de10fca-3f6b-4d01-aea4-7e060abe98cf
+filter(without_events[3].rowiter()) do 
 
 # ╔═╡ a36bf3e6-81e5-4d84-8181-5418fd061b6f
 function x1_exact(t)
@@ -38,39 +70,13 @@ function x1_exact(t)
 	return t < t_event ? exp(-3*t) : exp(-t + A)
 end
 
+# ╔═╡ d5a8151b-f6ab-43ba-be86-9e04f9cecf11
+let
+	
+end
+
 # ╔═╡ f4cda422-6bb2-4c9f-acce-500be251a9d0
 l1_norm(x, dt) = 0.5 * sum(dt .* (abs.(x[1:end-1]) + abs.(x[2:end])))
-
-# ╔═╡ bdabfe2f-f2a8-4441-9d95-a2f75fa223da
-function make_data(file)
-	raw_data = (CSV.File(file) |> DataFrame)
-	rows = row_selector.(raw_data.EVENTID)
-	nice_data = raw_data[rows, [:ITERATION, :TSTAMP, :EVENTID, :T, :X]]
-	transform!(nice_data, [:T, :X] => ((t, x) -> x-x1_exact.(t)) => :ERR)
-	total_time = raw_data[raw_data.EVENTID .== Int(SOLVER_COMPLETE), :TSTAMP][1]
-	dt = raw_data.DT[1]
-	return nice_data, total_time, dt, l1_norm(nice_data.ERR, diff(nice_data.T))
-end
-
-# ╔═╡ c4520e37-b3bb-44f5-ae8b-5bac3806c384
-with_events = map(make_data, joinpath(data_file_directory, "simple_example_10_minus_$(i)_solver_log.tsv") for i=0:6);
-
-# ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
-let
-	p = plot(0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
-	plot!(p, with_events[2][1].T[1:end-1], with_events[2][1].X[1:end-1], style=:dashdot, label=L"x_{est}(t)")
-	title!(p, "Simple Example; Computed vs. Exact; "*L"dt=0.1")
-	p
-end
-
-# ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
-without_events = map(make_data, joinpath(data_file_directory, "simple_example_10_minus_$(i)_noevents_solver_log.tsv") for i=0:6);
-
-# ╔═╡ 43ee777f-8b59-402e-9ee2-1066d4127b41
-let
-	p = scatter(getindex.(with_events, 3), getindex.(with_events, 4), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:+, msw=2, legend=:topleft, label="With Event Correction", xlabel=L"\Delta t")
-	scatter!(p, getindex.(without_events, 3), getindex.(without_events, 4), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:x, msw=2, label="Without Event Correction", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}")
-end
 
 # ╔═╡ de7bffb5-703b-486f-8eba-320cd49799c7
 md"""
@@ -102,8 +108,146 @@ md"""
 # With Event Correction vs. Without
 """
 
-# ╔═╡ 1108d193-852b-404e-a02c-a78ea8391ec2
+# ╔═╡ a2716fdb-ddb3-45c6-afbb-7a776bb51010
+md"""
+---
+"""
 
+# ╔═╡ 0ec705dd-58a2-48c0-a41b-b4d9736056d4
+# helper fns
+
+@enum SolverEvents begin 
+	SOLVER_BEGIN 
+	SOLVER_COMPLETE 
+	TIME_STEP_NO_EVENT 
+	TIME_STEP_EVENT_CORRECTED 
+	OPTIMIZE 
+	OPTIMUM_CHANGE
+end
+
+# ╔═╡ 16ee85b1-9c79-4991-bf85-fa01811e8e71
+l1_err_simple_ex(df) = l1_norm(df.ERR, diff(df.T))
+
+# ╔═╡ ee3ec426-0a64-434e-99f7-f982e654ed8f
+total_runtime(df) = df[df.EVENTID .== SOLVER_COMPLETE, :TSTAMP] |> first
+
+# ╔═╡ 72f64c05-11fd-4b40-83b7-44cd2e5bc132
+time_step_size(df) = df.DT |> first 
+
+# ╔═╡ 0dfd1b88-3003-4bf5-ac56-407c69794053
+simple_ex_err_transform(df) = transform!(df, [:T, :X] => ((t, x) -> x-x1_exact.(t)) => :ERR)
+
+# ╔═╡ 63468882-dbfe-429d-aead-de55cc4ec7b1
+function parse_YDY(str::AbstractString)
+	ys = split(str[2:end-1], ",") .|> strip
+	map(ys) do ystr
+		y = split(ystr[2:end-1], ",") .|> strip
+		parse.(Float64, y)
+	end
+end
+
+# ╔═╡ 817be9c6-d5d1-4a31-9879-3b9f2cb9cb28
+parse_YDY(::Missing) = missing
+
+# ╔═╡ a936713d-da19-45de-99e8-b3ab835c2beb
+data_file_directory = normpath(joinpath(pwd(), "../data/out"))
+
+# ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
+row_selector = ∈((SOLVER_BEGIN, TIME_STEP_NO_EVENT, TIME_STEP_EVENT_CORRECTED))
+
+# ╔═╡ bdabfe2f-f2a8-4441-9d95-a2f75fa223da
+ function make_data(file)
+	raw_data = (CSV.File(file) |> DataFrame)
+	transform!(raw_data, :EVENTID => (id -> SolverEvents.(id)) => :EVENTID)
+	rows = row_selector.(raw_data.EVENTID)
+	for col = [:Y, :DY]
+		transform!(raw_data, col => (y -> map(parse_YDY, y)) => col)
+	end
+	return raw_data
+end
+
+# ╔═╡ c4520e37-b3bb-44f5-ae8b-5bac3806c384
+with_events = map(joinpath(data_file_directory, "simple_example_10_minus_$(i)_solver_log.tsv") for i=0:5) do file
+	make_data(file) |> simple_ex_err_transform 
+end;
+
+# ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
+without_events = map(joinpath(data_file_directory, "simple_example_10_minus_$(i)_noevents_solver_log.tsv") for i=0:5) do file
+	make_data(file) |> simple_ex_err_transform 
+end;
+
+# ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
+let
+	p = plot(0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
+	plot!(p, with_events[3].T[1:end-1], with_events[3].X[1:end-1], style=:dashdot, label=L"x_{ev}(t)")
+	plot!(p, without_events[3].T, without_events[3].X, style=:dashdot, label=L"x_{noev}(t)")
+	title!(p, "Simple Example; Computed vs. Exact; "*L"dt=0.1")
+	p
+end
+
+# ╔═╡ 43ee777f-8b59-402e-9ee2-1066d4127b41
+let
+	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:+, msw=2, legend=:topleft, label="With Event Correction", xlabel=L"\Delta t")
+	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:x, msw=2, label="Without Event Correction", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}")
+	plot(p, [10.0^h for h=0:-1:-5], t->t, label=L"O(\Delta t^2)", ls=:dashdot)
+end
+
+# ╔═╡ fc36373b-efb6-475e-975a-4d7dd71f454f
+only_global = map(joinpath(data_file_directory, "simple_example_10_minus_$(i)_onlyglobal_solver_log.tsv") for i=0:5) do file
+	make_data(file) |> simple_ex_err_transform 
+end;
+
+# ╔═╡ a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
+let
+	data = hcat(total_runtime.(with_events), total_runtime.(without_events), total_runtime.(only_global))
+	scatter(time_step_size.(with_events)[1:end-1], data[1:end-1, :], xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime (s)", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], title="Runtime Cost of DAEO Solver")
+end
+
+# ╔═╡ 689bb63c-7dd7-492d-973c-989b510fa4fc
+md"""
+# Griewank Fun
+"""
+
+# ╔═╡ 7b308bce-87e0-4856-8b90-e1f367442c7e
+gw_data_hightol = make_data(joinpath(data_file_directory, "griewank_example_hightol_solver_log.tsv"))
+
+# ╔═╡ d0bcd5d9-7ace-4a08-be95-09ab3e818fe7
+gw_data_lowtol = make_data(joinpath(data_file_directory,"griewank_example_lowtol_solver_log.tsv"))
+
+# ╔═╡ 9cc02865-0439-442b-bb62-9f32cb9b48c2
+let
+	p = plot(gw_data_lowtol.T, gw_data_lowtol.X, legend=false, title="Cursed Solution")
+	events = filter(gw_data_lowtol) do row
+		row.EVENTID == TIME_STEP_EVENT_CORRECTED
+	end
+	scatter!(p, events.T, events.X)
+	p
+end
+
+# ╔═╡ 87771b74-eddd-4514-b129-bb7350bc7ee8
+let
+	p = plot(gw_data_lowtol.T, gw_data_lowtol.DX ./ gw_data_lowtol.DT, label=L"\dot x", xlabel=L"t", dpi=300)
+	events = filter(gw_data_lowtol) do row
+		row.EVENTID == TIME_STEP_EVENT_CORRECTED
+	end
+	for evt ∈ eachrow(events)
+		plot!(p, [evt.T, evt.T], [0, 6], ls=:dashdot, lw=1, label=false, color=:black)
+	end
+	p
+end
+
+# ╔═╡ a54f34ab-e4a4-4f52-a394-2588b63f345d
+let
+	p = plot(gw_data_hightol.T, gw_data_hightol.X, legend=false, title="Cursed Solution")
+	events = filter(gw_data_hightol) do row
+		row.EVENTID == TIME_STEP_EVENT_CORRECTED
+	end
+	scatter!(p, events.T, events.X)
+	p
+end
+
+# ╔═╡ 9ef85b0f-426d-44ab-95da-1f11af20da4d
+teststr = "[[2.10737942e+00], [9.46774071e-01], [3.23465844e+00]]"
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -115,14 +259,6 @@ LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
-
-[compat]
-CSV = "~0.10.12"
-DataFrames = "~1.6.1"
-DelimitedFiles = "~1.9.1"
-LaTeXStrings = "~1.3.1"
-Plots = "~1.40.1"
-PlutoUI = "~0.7.55"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -131,7 +267,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.0"
 manifest_format = "2.0"
-project_hash = "e5e67aa908d54e7732560e4c6daba8791d857878"
+project_hash = "837b389c9621c3f450885b3bca93ced80d12aec5"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -174,9 +310,9 @@ version = "1.16.1+1"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
-git-tree-sha1 = "59939d8a997469ee05c4b4944560a820f9ba0d73"
+git-tree-sha1 = "cd67fc487743b2f0fd4380d4cbd3a24660d0eec8"
 uuid = "944b1d66-785c-5afd-91f1-9de20f533193"
-version = "0.7.4"
+version = "0.7.3"
 
 [[deps.ColorSchemes]]
 deps = ["ColorTypes", "ColorVectorSpace", "Colors", "FixedPointNumbers", "PrecompileTools", "Random"]
@@ -363,15 +499,15 @@ version = "3.3.9+0"
 
 [[deps.GR]]
 deps = ["Artifacts", "Base64", "DelimitedFiles", "Downloads", "GR_jll", "HTTP", "JSON", "Libdl", "LinearAlgebra", "Pkg", "Preferences", "Printf", "Random", "Serialization", "Sockets", "TOML", "Tar", "Test", "UUIDs", "p7zip_jll"]
-git-tree-sha1 = "3458564589be207fa6a77dbbf8b97674c9836aab"
+git-tree-sha1 = "a8c834cdae6a8347c72eea19930ebdaabb6015e6"
 uuid = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
-version = "0.73.2"
+version = "0.73.1"
 
 [[deps.GR_jll]]
 deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "FreeType2_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt6Base_jll", "Zlib_jll", "libpng_jll"]
-git-tree-sha1 = "77f81da2964cc9fa7c0127f941e8bce37f7f1d70"
+git-tree-sha1 = "2abcce0c099dfb0863efc261be904fc2b85eccdd"
 uuid = "d2c73de3-f751-5644-a686-071e5b155ba9"
-version = "0.73.2+0"
+version = "0.73.1+0"
 
 [[deps.Gettext_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "XML2_jll"]
@@ -700,9 +836,9 @@ version = "1.4.1"
 
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "60e3045590bd104a16fefb12836c00c0ef8c7f8c"
+git-tree-sha1 = "cc6e1927ac521b659af340e0ca45828a3ffc748f"
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
-version = "3.0.13+0"
+version = "3.0.12+0"
 
 [[deps.Opus_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -756,9 +892,9 @@ version = "1.4.0"
 
 [[deps.Plots]]
 deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "JLFzf", "JSON", "LaTeXStrings", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "PrecompileTools", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "RelocatableFolders", "Requires", "Scratch", "Showoff", "SparseArrays", "Statistics", "StatsBase", "UUIDs", "UnicodeFun", "UnitfulLatexify", "Unzip"]
-git-tree-sha1 = "c4fa93d7d66acad8f6f4ff439576da9d2e890ee0"
+git-tree-sha1 = "38a748946dca52a622e79eea6ed35c6737499109"
 uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
-version = "1.40.1"
+version = "1.40.0"
 
     [deps.Plots.extensions]
     FileIOExt = "FileIO"
@@ -956,9 +1092,9 @@ deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[deps.TranscodingStreams]]
-git-tree-sha1 = "54194d92959d8ebaa8e26227dbe3cdefcdcd594f"
+git-tree-sha1 = "1fbeaaca45801b4ba17c251dd8603ef24801dd84"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
-version = "0.10.3"
+version = "0.10.2"
 weakdeps = ["Random", "Test"]
 
     [deps.TranscodingStreams.extensions]
@@ -1316,20 +1452,41 @@ version = "1.4.1+1"
 
 # ╔═╡ Cell order:
 # ╠═17f7f082-c48c-11ee-323b-91db1276203b
-# ╠═0ec705dd-58a2-48c0-a41b-b4d9736056d4
-# ╠═a936713d-da19-45de-99e8-b3ab835c2beb
-# ╠═7a83ff40-3e20-4603-9653-1685018af095
-# ╠═bdabfe2f-f2a8-4441-9d95-a2f75fa223da
+# ╟─3bb6f7d5-d76a-4c1f-af95-777dea2b342f
+# ╟─5623f375-8391-4f68-9937-9289406332f9
+# ╠═fbda8d1d-eb22-442c-a908-7ab1bb76bec8
 # ╠═c4520e37-b3bb-44f5-ae8b-5bac3806c384
 # ╠═a2806825-6c18-4659-9021-9f1bc5648d98
-# ╟─baa48d9b-50e3-458e-8105-568d96453209
+# ╠═fc36373b-efb6-475e-975a-4d7dd71f454f
+# ╟─7b47bd51-c459-49b7-9d94-2724a3a29bf9
+# ╠═7de10fca-3f6b-4d01-aea4-7e060abe98cf
+# ╠═baa48d9b-50e3-458e-8105-568d96453209
 # ╠═a36bf3e6-81e5-4d84-8181-5418fd061b6f
-# ╟─43ee777f-8b59-402e-9ee2-1066d4127b41
-# ╠═f4cda422-6bb2-4c9f-acce-500be251a9d0
+# ╠═43ee777f-8b59-402e-9ee2-1066d4127b41
 # ╟─de7bffb5-703b-486f-8eba-320cd49799c7
+# ╠═d5a8151b-f6ab-43ba-be86-9e04f9cecf11
+# ╠═f4cda422-6bb2-4c9f-acce-500be251a9d0
 # ╟─2224d08f-89a2-46e0-b874-9deffeb5d2f2
 # ╟─d07841d5-0a52-4075-94a1-02606e3feeb6
-# ╠═a6f1a87e-73c2-41c6-8e60-e483157ab4a6
-# ╠═1108d193-852b-404e-a02c-a78ea8391ec2
+# ╟─a6f1a87e-73c2-41c6-8e60-e483157ab4a6
+# ╟─a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
+# ╟─a2716fdb-ddb3-45c6-afbb-7a776bb51010
+# ╠═0ec705dd-58a2-48c0-a41b-b4d9736056d4
+# ╠═16ee85b1-9c79-4991-bf85-fa01811e8e71
+# ╠═ee3ec426-0a64-434e-99f7-f982e654ed8f
+# ╠═72f64c05-11fd-4b40-83b7-44cd2e5bc132
+# ╠═bdabfe2f-f2a8-4441-9d95-a2f75fa223da
+# ╠═0dfd1b88-3003-4bf5-ac56-407c69794053
+# ╠═63468882-dbfe-429d-aead-de55cc4ec7b1
+# ╠═817be9c6-d5d1-4a31-9879-3b9f2cb9cb28
+# ╠═a936713d-da19-45de-99e8-b3ab835c2beb
+# ╠═7a83ff40-3e20-4603-9653-1685018af095
+# ╟─689bb63c-7dd7-492d-973c-989b510fa4fc
+# ╠═7b308bce-87e0-4856-8b90-e1f367442c7e
+# ╠═d0bcd5d9-7ace-4a08-be95-09ab3e818fe7
+# ╠═9cc02865-0439-442b-bb62-9f32cb9b48c2
+# ╠═87771b74-eddd-4514-b129-bb7350bc7ee8
+# ╠═a54f34ab-e4a4-4f52-a394-2588b63f345d
+# ╠═9ef85b0f-426d-44ab-95da-1f11af20da4d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

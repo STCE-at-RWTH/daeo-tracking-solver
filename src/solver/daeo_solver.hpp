@@ -20,7 +20,6 @@
 #include "settings.hpp"
 #include "local_optima_solver.hpp"
 #include "utils/fmt_extensions.hpp"
-#include "utils/ntuple.hpp"
 
 using std::vector;
 
@@ -61,7 +60,7 @@ public:
     using y_t = Eigen::Vector<NUMERIC_T, YDIMS>;
     using y_hessian_t = Eigen::Matrix<NUMERIC_T, YDIMS, YDIMS>;
     using params_t = Eigen::Vector<NUMERIC_T, NPARAMS>;
-    using interval_t = optimizer_t::interval_t;
+    using interval_t = typename optimizer_t::interval_t;
     using solution_state_t = DAEOSolutionState<NUMERIC_T, YDIMS>;
 
     DAEOTrackingSolver(XPRIME const &t_xprime, OBJECTIVE const &t_objective,
@@ -115,23 +114,28 @@ public:
                     logger.log_global_optimization(clock::now(), iter, from_opt.t, from_opt.x, from_opt.y, from_opt.i_star);
                 }
                 // check if we need to rewind multiple time steps
-                fmt::println("  Checking identity of new optima at t={:.2e}", from_opt.t);
-                fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", from_opt.y);
+                // fmt::println("  Checking identity of new optima at t={:.2e}", from_opt.t);
+                // fmt::println("  BNB optimizer yields candidates for y at {:::.4e}", from_opt.y);
                 if (from_opt.n_local_optima() <= current.n_local_optima())
                 {
                     correct_optimizer_permutation(from_opt, current);
-                    fmt::println("  Optimizer may have vanished.");
-                    fmt::println("  Reordered optima to match {:::.4e}", from_opt.y);
-                    fmt::println("               new order is {:::.4e}", current.y);
+                    // fmt::println("  Optimizer may have vanished.");
+                    // fmt::println("  Reordered optima to match {:::.4e}", from_opt.y);
+                    // fmt::println("               new order is {:::.4e}", current.y);
                 }
                 else
                 {
                     correct_optimizer_permutation(current, from_opt);
-                    fmt::println("  Optimizer emerged.");
-                    fmt::println("  Reordered optima to match {:::.4e}", current.y);
-                    fmt::println("               new order is {:::.4e}", from_opt.y);
+                    // fmt::println("  Optimizer emerged.");
+                    // fmt::println("  Reordered optima to match {:::.4e}", current.y);
+                    // fmt::println("               new order is {:::.4e}", from_opt.y);
                 }
 
+                if (opt_res.minima_intervals.size() == 0)
+                {
+                    fmt::println("*** SCREAMING CRYING VOMITING ON THE FLOOR ***");
+                    return solution_trajectory;
+                }
                 // check for event and correct any error that may have accumulated
                 // from the local optimizer tracking
                 event_found = (next.y_star() - from_opt.y_star()).norm() > settings.EVENT_EPS;
@@ -155,8 +159,9 @@ public:
             {
                 fmt::println("  Detected global optimzer switch between (t={:.2e}, y={::.4e}) and (t={:.2e}, y={::.4e})",
                              current.t, current.y_star(), next.t, next.y_star());
+                fmt::println("    Jump size is {:.6e}", (current.y_star() - next.y_star()).norm());
                 // locate the event and take a time step to it
-                solution_state_t event = locate_and_integrate_to_event_newton(current, next, params);
+                solution_state_t event = locate_and_integrate_to_event_bisect(current, next, params);
                 NUMERIC_T dt_event = event.t - current.t;
                 if (settings.LOGGING_ENABLED)
                 {
@@ -206,7 +211,7 @@ private:
             y.back() = y_i.unaryExpr([](auto ival)
                                      { return median(ival); });
         }
-        solution_state_t ss(t, x, 0, y);
+        solution_state_t ss{t, x, 0, y};
         update_optimizer(ss, p);
         return ss;
     }
@@ -283,7 +288,7 @@ private:
      * @param[in] dt Current time step size.
      * @param[in] p Parameter vector.
      */
-    Eigen::VectorX<NUMERIC_T> G(solution_state_t const &start, solution_state_t const &guess, NUMERIC_T const dt, params_t const &p)
+    Eigen::VectorX<NUMERIC_T> trapezoidal_integrator(solution_state_t const &start, solution_state_t const &guess, NUMERIC_T const dt, params_t const &p)
     {
         int ydims = start.ydims();
         // fix i_star (assume no event in this part of the program)
@@ -303,7 +308,7 @@ private:
      * @param[in] dt The time step size from the beginning of the time step to where @c guess is evaluated.
      * @param[in] p Parameter vector.
      */
-    Eigen::MatrixX<NUMERIC_T> delG(solution_state_t const &guess, NUMERIC_T const dt, params_t const &p)
+    Eigen::MatrixX<NUMERIC_T> trapezoidal_integrator_jacobian(solution_state_t const &guess, NUMERIC_T const dt, params_t const &p)
     {
         using Eigen::seqN;
         int ydims = guess.ydims();
@@ -333,14 +338,14 @@ private:
         // copy into our guess and advance time
         solution_state_t next(start);
         next.t += dt;
-        Eigen::VectorX<NUMERIC_T> g, diff;
-        Eigen::MatrixX<NUMERIC_T> nabla_g;
+        Eigen::VectorX<NUMERIC_T> G, diff;
+        Eigen::MatrixX<NUMERIC_T> jacG;
         size_t iter = 0;
         while (iter < settings.MAX_NEWTON_ITERATIONS)
         {
-            g = G(start, next, dt, p);
-            nabla_g = delG(next, dt, p);
-            diff = nabla_g.colPivHouseholderQr().solve(g);
+            G = trapezoidal_integrator(start, next, dt, p);
+            jacG = trapezoidal_integrator_jacobian(next, dt, p);
+            diff = jacG.colPivHouseholderQr().solve(G);
             next.x = next.x - diff(0);
             for (size_t i = 0; i < start.n_local_optima(); i++)
             {
@@ -368,7 +373,7 @@ private:
      * @param[in] y2 Global optimizer at the end of the time step, integrated to @c t
      * @param[in] p Parameter vector.
      */
-    inline NUMERIC_T H(NUMERIC_T t, NUMERIC_T x, y_t const &y1, y_t const &y2, params_t const &p)
+    inline NUMERIC_T event_function(NUMERIC_T t, NUMERIC_T x, y_t const &y1, y_t const &y2, params_t const &p)
     {
         return m_objective.value(t, x, y1, p) - m_objective.value(t, x, y2, p);
     }
@@ -376,7 +381,7 @@ private:
     /**
      * @brief @b TOTAL derivative of @c H w.r.t. @c x
      */
-    inline NUMERIC_T dHdx(NUMERIC_T t, NUMERIC_T x, y_t const &y1, y_t const &y2, params_t const &p)
+    inline NUMERIC_T event_function_ddx(NUMERIC_T t, NUMERIC_T x, y_t const &y1, y_t const &y2, params_t const &p)
     {
         return m_objective.grad_x(t, x, y1, p) - m_objective.grad_x(t, x, y2, p);
     }
@@ -391,7 +396,7 @@ private:
      */
     solution_state_t locate_and_integrate_to_event_newton(solution_state_t const &start, solution_state_t const &end, params_t const &p)
     {
-        NUMERIC_T H_value, dHdt, dt_guess;
+        NUMERIC_T H, dHdt, dt_guess;
         solution_state_t guess;
         dt_guess = (end.t - start.t) / 2;
         size_t iter = 0;
@@ -401,8 +406,8 @@ private:
             // integrate to t_guess
             guess = integrate_daeo(start, dt_guess, p);
             // evaluate event function
-            H_value = H(guess.t, guess.x, guess.y[start.i_star], guess.y[end.i_star], p);
-            if (fabs(H_value) < settings.NEWTON_EPS)
+            H = event_function(guess.t, guess.x, guess.y[start.i_star], guess.y[end.i_star], p);
+            if (fabs(H) < settings.NEWTON_EPS)
             {
                 break;
             }
@@ -414,18 +419,54 @@ private:
                 // breaking may save us here.
                 break;
             }
-            dHdt = (dHdx(guess.t, guess.x, guess.y[start.i_star], guess.y[end.i_star], p) *
+            dHdt = (event_function_ddx(guess.t, guess.x, guess.y[start.i_star], guess.y[end.i_star], p) *
                     m_xprime.value(guess.t, guess.x, guess.y_star(), p));
             // dHdt += partial h partial t at y1 and y2... maybe not necessary.
             // newton iteration.
-            guess.t -= H_value / dHdt;
+            guess.t -= H / dHdt;
             dt_guess = guess.t - start.t;
             iter++;
         }
         return guess;
     }
+
+    /**
+     * @brief Locate and correct an event that happens between @c start and @c end using Bisection
+     * We assume that no new optimizers emerge inside this time step!
+     * @param[in] start
+     * @param[in] end
+     * @param[in] p
+     * @return Value of solution at event.
+     */
     solution_state_t locate_and_integrate_to_event_bisect(solution_state_t const &start, solution_state_t const &end, params_t const &p)
     {
+        solution_state_t guess;
+        NUMERIC_T t_L = start.t;
+        NUMERIC_T t_R = end.t;
+        NUMERIC_T delta = t_L - t_R;
+        NUMERIC_T dt_guess = delta / 2;
+        NUMERIC_T H;
+        size_t iter = 0;
+        while (iter < settings.MAX_NEWTON_ITERATIONS) // maybe we need to set this higher
+        {
+            guess = integrate_daeo(start, dt_guess, p);
+            H = event_function(guess.t, guess.x, guess.y[start.i_star], guess.y[end.i_star], p);
+            delta = delta / 2;
+            if (H < settings.NEWTON_EPS)
+            {
+                break;
+            }
+            else if (H < 0)
+            {
+                dt_guess += delta;
+            }
+            else
+            {
+                dt_guess -= delta;
+            }
+            iter++;
+        }
+        return guess;
     }
 };
 

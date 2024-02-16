@@ -186,7 +186,7 @@ private:
         bool allconverged = true;
         for (int k = 0; k < y_i.rows(); k++)
         {
-            dims_converged[k] = (width(y_i(k)) <= settings.TOL_X || (y_i(k).lower() == 0 && y_i(k).upper() == 0));
+            dims_converged[k] = (width(y_i(k)) <= settings.TOL_Y || (y_i(k).lower() == 0 && y_i(k).upper() == 0));
             allconverged = allconverged && dims_converged[k];
         }
         result_code = result_code | (allconverged ? CONVERGENCE_TEST_PASS : 0);
@@ -365,7 +365,7 @@ private:
                         y(i) = interval_t(y_m[i], y[i].upper());
                     }
                 }
-                dimsconverged[i] = width(y(i)) <= settings.TOL_X;
+                dimsconverged[i] = width(y(i)) <= settings.TOL_Y;
             }
             iteration++;
         }

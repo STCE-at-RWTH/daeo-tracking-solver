@@ -24,12 +24,9 @@ using suggested_solver_policies = boost::numeric::interval_lib::policies<
 template <typename NUMERIC_T>
 struct BNBOptimizerSettings
 {
-    NUMERIC_T TOL_X;
-    NUMERIC_T TOL_Y;
-
-    std::size_t MAXITER = 100;
-    std::size_t MAX_REFINE_ITER = 4;
-
+    NUMERIC_T TOL_Y = 1.0e-8;
+    std::size_t MAXITER = 1000;
+    std::size_t MAX_REFINE_ITER = 20;
     bool LOGGING_ENABLED = true;
 };
 

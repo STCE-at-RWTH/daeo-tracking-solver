@@ -52,7 +52,7 @@ public:
         // define dco types and get a pointer to the tape
         // unsure how to use ga1sm to expand this to multithreaded programs
         using dco_mode_t = dco::ga1s<Y_ACTIVE_T>;
-        using active_t = dco_mode_t::type;
+        using active_t = typename dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
         tape->reset();
         // define active inputs
@@ -85,7 +85,7 @@ public:
                       Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
     {
         using dco_mode_t = dco::gt1s<X_ACTIVE_T>;
-        using active_t = dco_mode_t::type;
+        using active_t = typename dco_mode_t::type;
         active_t x_active;
         active_t h_active;
         dco::value(x_active) = x;
@@ -99,9 +99,9 @@ public:
                                                    Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
                                                    Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
     {
-        using dco_tangent_t = dco::gt1s<Y_ACTIVE_T>::type;
+        using dco_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
         using dco_mode_t = dco::ga1s<dco_tangent_t>;
-        using active_t = dco_mode_t::type;
+        using active_t = typename dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
         active_t h_active;
         Eigen::Vector<active_t, YDIMS> y_active(y.rows());
@@ -138,9 +138,9 @@ public:
                                              Eigen::Vector<XY_ACTIVE_T, YDIMS> const &y,
                                              Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
     {
-        using dco_tangent_t = dco::gt1s<XY_ACTIVE_T>::type;
+        using dco_tangent_t = typename dco::gt1s<XY_ACTIVE_T>::type;
         using dco_mode_t = dco::ga1s<dco_tangent_t>;
-        using active_t = dco_mode_t::type;
+        using active_t = typename dco_mode_t::type;
         dco::smart_tape_ptr_t<dco_mode_t> tape;
         active_t h_active;
         Eigen::Vector<active_t, YDIMS> y_active(y.rows());
