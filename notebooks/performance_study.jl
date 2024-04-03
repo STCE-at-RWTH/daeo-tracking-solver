@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.37
+# v0.19.40
 
 using Markdown
 using InteractiveUtils
@@ -52,8 +52,8 @@ So far, we have:
 3. An event detection and correction procedure.
 """
 
-# ╔═╡ fbda8d1d-eb22-442c-a908-7ab1bb76bec8
-
+# ╔═╡ d13c2870-69e8-40fb-a44c-84644fb4a96f
+const N_RUNS::Int = 6
 
 # ╔═╡ 7b47bd51-c459-49b7-9d94-2724a3a29bf9
 md"""
@@ -80,13 +80,11 @@ Possible explanations:
   - Less quick fix: change to an order 3+ integration step (Runge-Kutta?)
 """
 
-# ╔═╡ d5a8151b-f6ab-43ba-be86-9e04f9cecf11
-let
-	
-end
-
 # ╔═╡ f4cda422-6bb2-4c9f-acce-500be251a9d0
-l1_norm(x, dt) = 0.5 * sum(dt .* (abs.(x[1:end-1]) + abs.(x[2:end])))
+l1_norm(x, dt::AbstractVector) = 0.5 * sum(dt .* (abs.(x[1:end-1]) + abs.(x[2:end])))
+
+# ╔═╡ e1074492-b12e-4c45-9e1e-c5b89563e59e
+l1_norm(x, dt::Number) = 0.5 * dt * abs(0.5 * x[1]) + abs(0.5*x[end]) + sum(abs, x[2:end-1])
 
 # ╔═╡ 2224d08f-89a2-46e0-b874-9deffeb5d2f2
 md"""
@@ -122,8 +120,21 @@ md"""
 	OPTIMUM_CHANGE
 end
 
+# ╔═╡ 489e5666-93b5-4198-aba1-c2eb5da5551f
+function alt_error_calc(df)
+	live_rows = filter(df) do row
+		row.EVENTID in (SOLVER_BEGIN, TIME_STEP_EVENT_CORRECTED, TIME_STEP_NO_EVENT)  && row.T <= 1.0
+	end
+	last(df.ERR)^2
+end
+
 # ╔═╡ 16ee85b1-9c79-4991-bf85-fa01811e8e71
-l1_err_simple_ex(df) = l1_norm(df.ERR, diff(df.T))
+function l1_err_simple_ex(df)
+	live_rows = filter(df) do row
+		row.EVENTID in (SOLVER_BEGIN, TIME_STEP_EVENT_CORRECTED, TIME_STEP_NO_EVENT)  && row.T <= 1.0
+	end
+	l1_norm(df.ERR, diff(df.T))
+end
 
 # ╔═╡ ee3ec426-0a64-434e-99f7-f982e654ed8f
 total_runtime(df) = df[df.EVENTID .== SOLVER_COMPLETE, :TSTAMP] |> first
@@ -164,25 +175,50 @@ row_selector = ∈((SOLVER_BEGIN, TIME_STEP_NO_EVENT, TIME_STEP_EVENT_CORRECTED)
 end
 
 # ╔═╡ c4520e37-b3bb-44f5-ae8b-5bac3806c384
-with_events = map(joinpath(data_file_directory, "simple_example_10_minus_$(i)_solver_log.tsv") for i=0:5) do file
-	make_data(file) |> simple_ex_err_transform 
-end;
-
-# ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
-without_events = map(joinpath(data_file_directory, "simple_example_10_minus_$(i)_noevents_solver_log.tsv") for i=0:5) do file
+with_events = map(joinpath(data_file_directory, "se_tracking_10_minus$(i)_solver_log.tsv") for i=0:N_RUNS) do file
 	make_data(file) |> simple_ex_err_transform 
 end;
 
 # ╔═╡ 7de10fca-3f6b-4d01-aea4-7e060abe98cf
-filter(without_events[3]) do row
-	row.EVENTID == TIME_STEP_EVENT_CORRECTED
+with_events[2]
+
+# ╔═╡ 2e14647e-1d44-40ab-b5b6-25166bfbdea2
+filter(with_events[2]) do r
+	!ismissing(r.DT) && r.DT <= 0
 end
 
+# ╔═╡ 848f19be-77a7-42ef-a868-c133a923c820
+df1 = filter(with_events[3]) do row
+	row.EVENTID in (SOLVER_BEGIN, TIME_STEP_EVENT_CORRECTED, TIME_STEP_NO_EVENT) && row.T <= 1.0
+end
+
+# ╔═╡ dde1ec3f-512b-4103-95d0-722802c3ed79
+diff(df1.T)
+
+# ╔═╡ af8e69b5-9a27-4201-b97d-b2326efa9bd5
+map(with_events) do df
+	evt = first(filter(df) do row
+		row.EVENTID == TIME_STEP_EVENT_CORRECTED
+	end)
+	evt.T
+end .- -log(0.5)/3
+
+# ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
+only_global = map(joinpath(data_file_directory, "se_tracking_onlyglobal_10_minus$(i)_solver_log.tsv") for i=0:N_RUNS) do file
+	make_data(file) |> simple_ex_err_transform 
+end;
+
+# ╔═╡ fc36373b-efb6-475e-975a-4d7dd71f454f
+without_events = map(joinpath(data_file_directory, "se_tracking_noevents_10_minus$(i)_solver_log.tsv") for i=0:N_RUNS) do file
+	make_data(file) |> simple_ex_err_transform 
+end;
+
 # ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
-let
-	p = plot(0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
-	scatter!(p, with_events[2].T[1:end-1], with_events[2].X[1:end-1], label=L"x_{ev}(t)", marker=:plus, msw=2)
-	scatter!(p, without_events[2].T, without_events[2].X, label=L"x_{noev}(t)", marker=:x)
+let n = 2
+	p = scatter([-log(0.5)/3], x1_exact, label="Event")
+	plot!(p, 0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
+	scatter!(p, with_events[n].T[1:end-2], with_events[n].X[1:end-2], label=L"x_{ev}(t)", marker=:plus, msw=2)
+	scatter!(p, without_events[n].T[1:end-2], without_events[n].X[1:end-2], label=L"x_{noev}(t)", marker=:x)
 	title!(p, "Simple Example; Computed vs. Exact; "*L"dt=0.1")
 	p
 end
@@ -191,18 +227,15 @@ end
 let
 	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:+, msw=2, legend=:topleft, label="With Event Correction", xlabel=L"\Delta t")
 	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:x, msw=2, label="Without Event Correction", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}")
-	plot(p, [10.0^h for h=0:-1:-5], t->t, label=L"O(\Delta t^2)", ls=:dashdot)
+	plot!(p, [10.0^h for h=0:-1:-6], [t->0.1*t, t->0.1*t^2], label=[L"O(\Delta t)" L"O(\Delta t^2)"], ls=:dashdot)
+	scatter!(p, time_step_size.(with_events), alt_error_calc.(with_events))
+	scatter!(p, time_step_size.(without_events), alt_error_calc.(without_events))
 end
-
-# ╔═╡ fc36373b-efb6-475e-975a-4d7dd71f454f
-only_global = map(joinpath(data_file_directory, "simple_example_10_minus_$(i)_onlyglobal_solver_log.tsv") for i=0:5) do file
-	make_data(file) |> simple_ex_err_transform 
-end;
 
 # ╔═╡ a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
 let
 	data = hcat(total_runtime.(with_events), total_runtime.(without_events), total_runtime.(only_global))
-	scatter(time_step_size.(with_events)[1:end-1], data[1:end-1, :], xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime (s)", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], title="Runtime Cost of DAEO Solver")
+	scatter(time_step_size.(with_events), data[1:end, :], xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime (s)", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], title="Runtime Cost of DAEO Solver")
 end
 
 # ╔═╡ 689bb63c-7dd7-492d-973c-989b510fa4fc
@@ -248,9 +281,6 @@ let
 	p
 end
 
-# ╔═╡ 9ef85b0f-426d-44ab-95da-1f11af20da4d
-teststr = "[[2.10737942e+00], [9.46774071e-01], [3.23465844e+00]]"
-
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -267,7 +297,7 @@ PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.10.0"
+julia_version = "1.10.1"
 manifest_format = "2.0"
 project_hash = "837b389c9621c3f450885b3bca93ced80d12aec5"
 
@@ -359,7 +389,7 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.0.5+1"
+version = "1.1.0+0"
 
 [[deps.ConcurrentUtilities]]
 deps = ["Serialization", "Sockets"]
@@ -823,7 +853,7 @@ version = "1.3.5+1"
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
-version = "0.3.23+2"
+version = "0.3.23+4"
 
 [[deps.OpenLibm_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -1456,22 +1486,27 @@ version = "1.4.1+1"
 # ╠═17f7f082-c48c-11ee-323b-91db1276203b
 # ╟─3bb6f7d5-d76a-4c1f-af95-777dea2b342f
 # ╟─5623f375-8391-4f68-9937-9289406332f9
-# ╠═fbda8d1d-eb22-442c-a908-7ab1bb76bec8
+# ╠═d13c2870-69e8-40fb-a44c-84644fb4a96f
 # ╠═c4520e37-b3bb-44f5-ae8b-5bac3806c384
 # ╠═a2806825-6c18-4659-9021-9f1bc5648d98
 # ╠═fc36373b-efb6-475e-975a-4d7dd71f454f
 # ╟─7b47bd51-c459-49b7-9d94-2724a3a29bf9
 # ╠═7de10fca-3f6b-4d01-aea4-7e060abe98cf
 # ╠═baa48d9b-50e3-458e-8105-568d96453209
+# ╠═2e14647e-1d44-40ab-b5b6-25166bfbdea2
+# ╠═848f19be-77a7-42ef-a868-c133a923c820
+# ╠═dde1ec3f-512b-4103-95d0-722802c3ed79
+# ╠═af8e69b5-9a27-4201-b97d-b2326efa9bd5
 # ╠═a36bf3e6-81e5-4d84-8181-5418fd061b6f
 # ╠═43ee777f-8b59-402e-9ee2-1066d4127b41
+# ╠═489e5666-93b5-4198-aba1-c2eb5da5551f
 # ╟─de7bffb5-703b-486f-8eba-320cd49799c7
-# ╠═d5a8151b-f6ab-43ba-be86-9e04f9cecf11
 # ╠═f4cda422-6bb2-4c9f-acce-500be251a9d0
+# ╠═e1074492-b12e-4c45-9e1e-c5b89563e59e
 # ╟─2224d08f-89a2-46e0-b874-9deffeb5d2f2
 # ╟─d07841d5-0a52-4075-94a1-02606e3feeb6
 # ╟─a6f1a87e-73c2-41c6-8e60-e483157ab4a6
-# ╟─a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
+# ╠═a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
 # ╟─a2716fdb-ddb3-45c6-afbb-7a776bb51010
 # ╠═0ec705dd-58a2-48c0-a41b-b4d9736056d4
 # ╠═16ee85b1-9c79-4991-bf85-fa01811e8e71
@@ -1489,6 +1524,5 @@ version = "1.4.1+1"
 # ╠═9cc02865-0439-442b-bb62-9f32cb9b48c2
 # ╠═87771b74-eddd-4514-b129-bb7350bc7ee8
 # ╠═a54f34ab-e4a4-4f52-a394-2588b63f345d
-# ╠═9ef85b0f-426d-44ab-95da-1f11af20da4d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

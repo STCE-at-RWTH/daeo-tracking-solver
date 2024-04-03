@@ -146,6 +146,22 @@ public:
       }
       i++;
     }
+
+    // one last check for the global.
+    // am I saving any work with this? TBD.
+    if (only_global) {
+      NUMERIC_T h_max = std::numeric_limits<NUMERIC_T>::max();
+      interval_t h;
+      for (size_t i = 0; i < sresults.minima_intervals.size(); i++) {
+        h = m_objective.value(t, x, sresults.minima_intervals[i], params);
+        if (h.upper() < h_max) {
+          h_max = h.upper();
+        } else {
+          sresults.minima_intervals.erase(sresults.minima_intervals.begin() + i);
+        }
+      }
+    }
+
     auto comp_end = std::chrono::high_resolution_clock::now();
     if (settings.LOGGING_ENABLED) {
       logger.log_computation_end(comp_end, i, sresults.minima_intervals.size());
@@ -186,16 +202,16 @@ private:
                            (y_i(k).lower() == 0 && y_i(k).upper() == 0));
       allconverged = allconverged && dims_converged[k];
     }
-    result_code = result_code | (allconverged ? CONVERGENCE_TEST_PASS : 0);
+    if (allconverged) {
+      result_code |= CONVERGENCE_TEST_PASS;
+    }
 
     // value test
     interval_t h(m_objective.value(t, x, y_i, params));
-    if (sresults.optima_upper_bound <=
-        h.lower()) { // if lower end of interval larger than possible lower
-                     // bound...
-      result_code = result_code | VALUE_TEST_FAIL;
+    // if lower end of interval larger than possible lower bound...
+    if (sresults.optima_upper_bound < h.lower()) {
+      result_code |= VALUE_TEST_FAIL;
     } else {
-      result_code = result_code | VALUE_TEST_PASS;
       sresults.optima_upper_bound = h.upper();
     }
 
@@ -204,19 +220,23 @@ private:
     bool grad_pass = std::all_of(dhdy.begin(), dhdy.end(), [](interval_t ival) {
       return boost::numeric::zero_in(ival);
     });
-    result_code =
-        result_code | (grad_pass ? GRADIENT_TEST_PASS : GRADIENT_TEST_FAIL);
+
+    if (grad_pass) {
+      result_code |= GRADIENT_TEST_PASS;
+    } else {
+      result_code |= GRADIENT_TEST_FAIL;
+    }
 
     // second derivative test
     y_hessian_interval_t d2hdy2(m_objective.hess_y(t, x, y_i, params));
-    result_code = result_code | hessian_test(d2hdy2);
+    result_code |= hessian_test(d2hdy2);
 
     // take actions based upon test results.
     vector<y_interval_t> candidate_intervals;
     logger.log_all_tests(clock::now(), tasknum, result_code, y_i, h, dhdy,
                          d2hdy2.rowwise(), dims_converged);
-    if ((result_code & VALUE_TEST_FAIL) && only_global) {
-      // value test fail
+    if (only_global && (result_code & VALUE_TEST_FAIL)) {
+      // value test fail + we only want to locate the global optimum
       // do nothing :)
     } else if ((result_code & GRADIENT_TEST_FAIL) |
                (result_code & HESSIAN_NEGATIVE_DEFINITE)) {
@@ -229,20 +249,19 @@ private:
           narrow_via_bisection(t, x, y_i, params, dims_converged);
       // need to perform value test again with narrowed interval.
       interval_t h_res = m_objective.value(t, x, y_res, params);
-      if (only_global && h_res.lower() > sresults.optima_upper_bound) {
-        result_code = result_code | VALUE_TEST_FAIL;
+      if (only_global && sresults.optima_upper_bound < h.lower()) {
+        result_code |= VALUE_TEST_FAIL;
       } else {
         sresults.optima_upper_bound = h_res.upper();
         sresults.minima_intervals.push_back(y_res);
       }
-      result_code = result_code | CONVERGENCE_TEST_PASS;
+      result_code |= CONVERGENCE_TEST_PASS;
     } else if (result_code & CONVERGENCE_TEST_PASS) {
-      fmt::print(std::cout,
-                 "  Strange behavior in task {:d}, result code is {:d}.\n",
-                 tasknum, result_code);
-      fmt::print(std::cout, "  Gradient test FAIL, hessian test INCONCLUSIVE, "
-                            "convergence PASS\n");
-      fmt::print(std::cout, "  DISCARDING INTERVAL\n");
+      fmt::println("  Strange behavior in task {:d}, result code is {:d}.",
+                   tasknum, result_code);
+      fmt::println(
+          "  Gradient test FAIL, hessian test INCONCLUSIVE, convergence PASS");
+      fmt::println("  DISCARDING INTERVAL");
     } else {
       // second derivative test is inconclusive...
       // interval contains a change of sign in the gradient, but it is not

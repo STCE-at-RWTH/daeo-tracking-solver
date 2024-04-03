@@ -37,20 +37,19 @@ enum OptimizerEventCode {
   ALL_TESTS
 };
 
-auto format_as(OptimizerEventCode evc) { return fmt::underlying(evc); }
+inline auto format_as(OptimizerEventCode evc) { return fmt::underlying(evc); }
 
 enum OptimizerTestCode {
   CONVERGENCE_TEST_PASS = 1,
   VALUE_TEST_FAIL = 2,
-  VALUE_TEST_PASS = 4,
-  GRADIENT_TEST_FAIL = 8,
-  GRADIENT_TEST_PASS = 16,
-  HESSIAN_NEGATIVE_DEFINITE = 32,
-  HESSIAN_MAYBE_INDEFINITE = 64,
-  HESSIAN_POSITIVE_DEFINITE = 128
+  GRADIENT_TEST_FAIL = 4,
+  GRADIENT_TEST_PASS = 8,
+  HESSIAN_NEGATIVE_DEFINITE = 16,
+  HESSIAN_MAYBE_INDEFINITE = 32,
+  HESSIAN_POSITIVE_DEFINITE = 64
 };
 
-auto format_as(OptimizerTestCode evc) { return fmt::underlying(evc); }
+inline auto format_as(OptimizerTestCode evc) { return fmt::underlying(evc); }
 
 constexpr char OPTIMIZER_LOG_COLUMNS[]{
     "TASKNUM\tTSTAMP\tEVENTID\tEXTRACODE\tX\tH\tDHDX\tD2HDX2\tCONVERGENCE"};
@@ -198,7 +197,7 @@ enum SolverEventCode {
   OPTIMUM_CHANGE
 };
 
-auto format_as(SolverEventCode evc) { return fmt::underlying(evc); }
+inline auto format_as(SolverEventCode evc) { return fmt::underlying(evc); }
 
 constexpr char SOLVER_LOG_COLUMNS[]{
     "ITERATION\tTSTAMP\tEVENTID\tEXTRACODE\tT\tDT\tX\tDX\tY\tDY\tISTAR"};

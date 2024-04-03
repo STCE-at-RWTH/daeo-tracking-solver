@@ -111,8 +111,8 @@ public:
     bool event_found;
     while (current.t < t_end) {
       solution_trajectory.push_back(current);
-      event_found =
-          false; // we have not found an event in this time step (yet).
+      // we have not found an event in this time step (yet).
+      event_found = false;
       next = integrate_daeo(current, dt, params);
       if (iterations_since_search == settings.SEARCH_FREQUENCY) {
         opt_res = m_optimizer.find_minima_at(next.t, next.x, params,
@@ -125,19 +125,20 @@ public:
                                          from_opt.i_star);
         }
         // check if we need to rewind multiple time steps
-        // fmt::println("  Checking identity of new optima at t={:.2e}",
-        // from_opt.t); fmt::println("  BNB optimizer yields candidates for y at
-        // {:::.4e}", from_opt.y);
+        fmt::println("  Checking identity of new optima at t={:.2e}",
+                     from_opt.t);
+        fmt::println("  BNB optimizer yields candidates for y at {:::.4e}",
+                     from_opt.y);
         if (from_opt.n_local_optima() <= current.n_local_optima()) {
           correct_optimizer_permutation(from_opt, current);
-          // fmt::println("  Optimizer may have vanished.");
-          // fmt::println("  Reordered optima to match {:::.4e}", from_opt.y);
-          // fmt::println("               new order is {:::.4e}", current.y);
+          fmt::println("  Optimizer may have vanished.");
+          fmt::println("  Reordered optima to match {:::.4e}", from_opt.y);
+          fmt::println("               new order is {:::.4e}", current.y);
         } else {
           correct_optimizer_permutation(current, from_opt);
-          // fmt::println("  Optimizer emerged.");
-          // fmt::println("  Reordered optima to match {:::.4e}", current.y);
-          // fmt::println("               new order is {:::.4e}", from_opt.y);
+          fmt::println("  Optimizer emerged.");
+          fmt::println("  Reordered optima to match {:::.4e}", current.y);
+          fmt::println("               new order is {:::.4e}", from_opt.y);
         }
 
         if (opt_res.minima_intervals.size() == 0) {
@@ -161,18 +162,24 @@ public:
         update_optimizer(next, params);
         event_found = next.i_star != current.i_star;
       }
-      // dydt = estimate_dydt(dt, y_k, y_k_next);
+
       if (settings.EVENT_DETECTION_AND_CORRECTION && event_found) {
-        fmt::println("  Detected global optimzer switch between (t={:.2e}, "
-                     "y={::.4e}) and (t={:.2e}, y={::.4e})",
+        fmt::println("  Detected global optimzer switch between (t={:.6e}, "
+                     "y={::.4e}) and (t={:.6e}, y={::.4e})",
                      current.t, current.y_star(), next.t, next.y_star());
         fmt::println("    Jump size is {:.6e}",
                      (current.y_star() - next.y_star()).norm());
-        fmt::println("    Integrating to event from t={:.4e}", current.t);
+        fmt::println("    Integrating to event from t={:.6e}", current.t);
         // locate the event and take a time step to it
         solution_state_t event =
             locate_and_integrate_to_event_bisect(current, next, params);
-        fmt::println("    Event at t={:.4e}, x={:.4e}", event.t, event.x);
+        fmt::println("    Event at t={:.6e}, x={:.4e}", event.t, event.x);
+        // assign new global optimizer index
+        fmt::println("    Old optimizers are {:::.4e}, i_star is {:d}",
+                     current.y, current.i_star);
+        event.i_star = next.i_star;
+        fmt::println("    New optimizers are {:::.4e}, i_star is {:d}", event.y,
+                     event.i_star);
         NUMERIC_T dt_event = event.t - current.t;
         if (settings.LOGGING_ENABLED) {
           dy = compute_dy(current.y, event.y);
@@ -182,11 +189,11 @@ public:
         }
         // complete time step from event back to the grid.
         NUMERIC_T dt_grid = dt - dt_event;
-        fmt::println("    Integrating away from event at t={:.4e}, x={:.4e} "
-                     "with step size {:.4e}",
+        fmt::println("    Integrating away from event at t={:.6e}, x={:.4e} "
+                     "with step size {:.6e}",
                      event.t, event.x, dt_grid);
+        fmt::println("    End time of step is t={:.6e}", event.t + dt_grid);
         next = integrate_daeo(event, dt_grid, params);
-        update_optimizer(next, params);
       }
       // we don't need to handle events, we can move on.
       if (settings.LOGGING_ENABLED) {
@@ -468,10 +475,8 @@ private:
                                        solution_state_t const &end,
                                        params_t const &p) {
     solution_state_t guess;
-    NUMERIC_T t_L = start.t;
-    NUMERIC_T t_R = end.t;
-    NUMERIC_T delta = t_L - t_R;
-    NUMERIC_T dt_guess = delta / 2;
+    NUMERIC_T delta = (end.t - start.t) / 2;
+    NUMERIC_T dt_guess = delta;
     NUMERIC_T H;
     size_t iter = 0;
     while (iter <
