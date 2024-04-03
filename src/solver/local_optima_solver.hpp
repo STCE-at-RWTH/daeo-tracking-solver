@@ -150,16 +150,19 @@ public:
     // one last check for the global.
     // am I saving any work with this? TBD.
     if (only_global) {
+      vector<y_interval_t> res;
       NUMERIC_T h_max = std::numeric_limits<NUMERIC_T>::max();
       interval_t h;
+      size_t i_star = 0;
       for (size_t i = 0; i < sresults.minima_intervals.size(); i++) {
         h = m_objective.value(t, x, sresults.minima_intervals[i], params);
         if (h.upper() < h_max) {
           h_max = h.upper();
-        } else {
-          sresults.minima_intervals.erase(sresults.minima_intervals.begin() + i);
+          i_star = i;
         }
       }
+      res.push_back(sresults.minima_intervals[i_star]);
+      std::swap(sresults.minima_intervals, res);
     }
 
     auto comp_end = std::chrono::high_resolution_clock::now();
