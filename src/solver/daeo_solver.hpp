@@ -57,13 +57,36 @@ template <typename XPRIME, typename OBJECTIVE, typename NUMERIC_T, int YDIMS,
           int NPARAMS>
 class DAEOTrackingSolver {
 public:
+  /**
+   * @brief Type of the local optimizer.
+   */
   using optimizer_t =
       BNBLocalOptimizer<OBJECTIVE, NUMERIC_T,
                         suggested_solver_policies<NUMERIC_T>, YDIMS, NPARAMS>;
+  
+  /**
+  * @brief Type for an optimizer of the objective function.
+  */
   using y_t = Eigen::Vector<NUMERIC_T, YDIMS>;
+
+  /**
+  * @brief Type for the hessian matrix of the objective function.
+  */
   using y_hessian_t = Eigen::Matrix<NUMERIC_T, YDIMS, YDIMS>;
+
+  /**
+  * @brief Type of the parameter vector
+  */
   using params_t = Eigen::Vector<NUMERIC_T, NPARAMS>;
+
+  /**
+  * @brief An interval of @c NUMERIC_TYPE
+  */
   using interval_t = typename optimizer_t::interval_t;
+
+  /**
+  * @brief The type of the solution state
+  */
   using solution_state_t = DAEOSolutionState<NUMERIC_T, YDIMS>;
 
   DAEOTrackingSolver(XPRIME const &t_xprime, OBJECTIVE const &t_objective,
@@ -101,7 +124,7 @@ public:
     // next portion relies on the assumption that two minimizers of h don't
     // "cross paths" inside of a time step even if they did, would it really
     // matter? since we don't do any implicit function silliness we probably
-    // wouldn't even be able to tell if this did happen it may be beneficial to
+    // wouldn't even be able to tell if this did happen, but it may be beneficial to
     // periodically check all of the y_is and see if they're close to each other
     // before and after solving for the values at the next time step. This would
     // trigger a search for minima of h(x, y) again, since we may have "lost"

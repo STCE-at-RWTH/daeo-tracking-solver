@@ -25,8 +25,6 @@
 #include "utils/fmt_extensions.hpp"
 #include "utils/sylvesters_criterion.hpp"
 
-using boost::numeric::median;
-using boost::numeric::width;
 using std::vector;
 
 /**
@@ -162,7 +160,7 @@ public:
         }
       }
       res.push_back(sresults.minima_intervals[i_star]);
-      std::swap(sresults.minima_intervals, res);
+      sresults.minima_intervals = std::move(res);
     }
 
     auto comp_end = std::chrono::high_resolution_clock::now();
@@ -201,7 +199,7 @@ private:
     vector<bool> dims_converged(y_i.rows(), true);
     bool allconverged = true;
     for (int k = 0; k < y_i.rows(); k++) {
-      dims_converged[k] = (width(y_i(k)) <= settings.TOL_Y ||
+      dims_converged[k] = (boost::numeric::width(y_i(k)) <= settings.TOL_Y ||
                            (y_i(k).lower() == 0 && y_i(k).upper() == 0));
       allconverged = allconverged && dims_converged[k];
     }
@@ -211,14 +209,21 @@ private:
 
     // value test
     interval_t h(m_objective.value(t, x, y_i, params));
-    // if lower end of interval larger than possible lower bound...
+    // fails if the lower end of the interval is larger than global upper bound
+    // we update the global upper bound if the upper end of the interval is less
+    // than the global optimum bound we only mark failures here, and we could
+    // bail at this point, if we wished.
+    // TODO bail early and avoid derivative tests
     if (sresults.optima_upper_bound < h.lower()) {
       result_code |= VALUE_TEST_FAIL;
-    } else {
+    } else if (h.upper() < sresults.optima_upper_bound) {
       sresults.optima_upper_bound = h.upper();
     }
 
     // first derivative test
+    // fails if it is not possible for the gradient to be zero inside the
+    // interval y
+    // TODO bail early and avoid hessian test
     y_interval_t dhdy(m_objective.grad_y(t, x, y_i, params));
     bool grad_pass = std::all_of(dhdy.begin(), dhdy.end(), [](interval_t ival) {
       return boost::numeric::zero_in(ival);
@@ -310,10 +315,10 @@ private:
         continue;
       }
       size_t result_size = res.size();
-      NUMERIC_T m = median(y(i));
+      NUMERIC_T split_point = boost::numeric::median(y(i));
       for (size_t j = 0; j < result_size; j++) {
         // check right side first
-        res[j](i).assign(m, res[j](i).upper());
+        res[j](i).assign(split_point, res[j](i).upper());
         // this check needs some work.
         // // do derivative test at the split
         // // if gradient in dimension i is nonnegative and its lower bound is
@@ -328,7 +333,7 @@ private:
         // // do the split
         res.emplace_back(y.rows());
         res.back() = y;
-        res.back()(i).assign(res.back()(i).lower(), m);
+        res.back()(i).assign(res.back()(i).lower(), split_point);
       }
     }
     // fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
@@ -352,11 +357,7 @@ private:
                       [](bool b) -> bool { return b; })) {
         break;
       }
-
-      for (int i = 0; i < y.rows(); i++) {
-        y_m(i) = median(y(i));
-      }
-      // objective_gradient(t, x, y_m, params, temp, midgrad);
+      y_m = y.unaryExpr([](auto ival) { return boost::numeric::median(ival); });
       gradient_y_m = m_objective.grad_y(t, x, y_m, params);
       for (int i = 0; i < y.size(); i++) {
         if (!dimsconverged[i]) {
@@ -367,7 +368,7 @@ private:
             y(i) = interval_t(y_m[i], y[i].upper());
           }
         }
-        dimsconverged[i] = width(y(i)) <= settings.TOL_Y;
+        dimsconverged[i] = boost::numeric::width(y(i)) <= settings.TOL_Y;
       }
       iteration++;
     }
