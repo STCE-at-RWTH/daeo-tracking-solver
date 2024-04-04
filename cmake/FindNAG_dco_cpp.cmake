@@ -73,6 +73,12 @@ if(NOT(NAG_dco_cpp_DIR))
           break()
         endif()
 
+        # Try to find license-managed version, 64-bit, using the new product codes
+        _dco_get_installation_path("dbl6i0${_dco_version_major}xnl" NAG_dco_cpp_DIR)
+        if(NAG_dco_cpp_DIR AND _dco_is_64)
+          break()
+        endif()
+
         # Try to find license-managed version 64-bit
         _dco_get_installation_path("dcl6i${_dco_version_major}${_dco_version_minor}ngl" NAG_dco_cpp_DIR)
         if(NAG_dco_cpp_DIR AND _dco_is_64)
