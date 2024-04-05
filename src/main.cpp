@@ -1,4 +1,5 @@
 #include <cmath>
+#include <fmt/core.h>
 #include <iostream>
 #include <numbers>
 #include <vector>
@@ -140,7 +141,7 @@ void simple_example_perf_study() {
   BNBOptimizerSettings<double> opt_s;
   opt_s.LOGGING_ENABLED = false;
 
-  int NUM_SOLVER_RUNS = 7;
+  constexpr int NUM_SOLVER_RUNS = 2;
 
   /**
    * TRACK LOCAL, NEVER REOPTIMIZE
@@ -178,7 +179,7 @@ void simple_example_perf_study() {
   solver_s.SEARCH_FREQUENCY = 1;
   solver_s.ONLY_GLOBAL_OPTIMIZATION = true;
   solver_s.EVENT_DETECTION_AND_CORRECTION = true;
-  
+
   for (int i = 0; i < NUM_SOLVER_RUNS; i++) {
     double dt = pow(10.0, -i);
     solver_t solver(f, h, opt_s, solver_s);
@@ -198,4 +199,15 @@ int main(int argc, char **argv) {
   simple_example_perf_study();
   fmt::println("*** griewank time ***");
   // griewank_example_event_tolerance_study();
+
+  double_ival singleton1(1.0, 1.0);
+  double_ival singleton2(1.0);
+  fmt::println("single1 = {:.2f}, single2 = {:.2f}", singleton1, singleton2);
+  using boost::numeric::median;
+  using boost::numeric::width;
+  fmt::println("mid s1 = {:.2f}, mid s2 = {:.2f}", median(singleton1),
+               median(singleton2));
+  double tol = 1.0e-8;
+  fmt::println("width leq tol? {:b}",
+               tol >= width(double_ival(1.0 - tol / 4, 1.0 + tol / 4)));
 }

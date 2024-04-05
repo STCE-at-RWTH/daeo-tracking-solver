@@ -317,23 +317,31 @@ private:
       size_t result_size = res.size();
       NUMERIC_T split_point = boost::numeric::median(y(i));
       for (size_t j = 0; j < result_size; j++) {
-        // check right side first
-        res[j](i).assign(split_point, res[j](i).upper());
-        // this check needs some work.
-        // // do derivative test at the split
-        // // if gradient in dimension i is nonnegative and its lower bound is
-        // zero
-        // // then we split at the minimizer
-        // interval_t dyi = m_objective.grad_y(t, x, res[j], p)(i);
-        // if (nonnegative(dyi) && dyi.lower() <
-        // std::numeric_limits<NUMERIC_T>::epsilon())
-        // {
-        //     continue;
-        // }
-        // // do the split
-        res.emplace_back(y.rows());
-        res.back() = y;
-        res.back()(i).assign(res.back()(i).lower(), split_point);
+        y_interval_t splitting_plane = res[j];
+        splitting_plane(i).assign(split_point, split_point);
+        y_interval_t grad = m_objective.grad_y(t, x, splitting_plane, p);
+        bool optimum_on_splitting_plane = boost::numeric::zero_in(grad(i));
+        if (optimum_on_splitting_plane) {
+          // capture the splitting plane in an interval smaller than TOL
+          NUMERIC_T cut_L = split_point - settings.TOL_Y / 4;
+          NUMERIC_T cut_R = split_point + settings.TOL_Y / 4;
+          res.emplace_back(y.rows());
+          res.back() = res[j];
+          res.back()(i).assign(cut_L, cut_R);
+          // add the right side to the end of the result vector
+          res.emplace_back(y.rows());
+          res.back() = res[j];
+          res.back()(i).assign(cut_R, y(i).upper());
+          // update res[j] to be the left side
+          res[j](i).assign(res[j](i).lower(), cut_L);
+        } else {
+          // add the right side to the end of the result vector
+          res.emplace_back(y.rows());
+          res.back() = res[j];
+          res.back()(i).assign(split_point, y(i).upper());
+          // update res[j] to be the left side
+          res[j](i).assign(res[j](i).lower(), split_point);
+        }
       }
     }
     // fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
