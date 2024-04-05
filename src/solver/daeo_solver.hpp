@@ -384,7 +384,7 @@ private:
    * @return The value of solution at @c t=t+dt.
    * @details Integrates the ODE using the trapezoidal rule. Additionally solves
    * ∂h/∂y_k = 0 simultaenously using Newton's method.
-   * DOES NOT UPDATE THE THE RESULT'S I_STAR!
+   * DOES @b NOT UPDATE THE THE RESULT'S I_STAR!
    */
   solution_state_t integrate_daeo(solution_state_t const &start, NUMERIC_T dt,
                                   params_t const &p) {
@@ -543,6 +543,9 @@ private:
       }
       iter++;
     }
+    // is this a dirty hack? only time will tell
+    // we know that after t_event, the optimizer is the same as end.y_star()
+    guess.i_star = 1;
     return guess;
   }
 };
