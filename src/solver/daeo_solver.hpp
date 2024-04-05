@@ -201,7 +201,6 @@ public:
         // assign new global optimizer index
         fmt::println("    Old optimizers are {:::.4e}, i_star is {:d}",
                      current.y, current.i_star);
-        event.i_star = next.i_star;
         fmt::println("    New optimizers are {:::.4e}, i_star is {:d}", event.y,
                      event.i_star);
         NUMERIC_T dt_event = event.t - current.t;
