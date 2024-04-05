@@ -131,11 +131,10 @@ public:
     // one
 
     size_t iter = 0, iterations_since_search = 0;
-    bool event_found;
     while (current.t < t_end) {
       solution_trajectory.push_back(current);
       // we have not found an event in this time step (yet).
-      event_found = false;
+      bool event_found = false;
       next = integrate_daeo(current, dt, params);
       if (iterations_since_search == settings.SEARCH_FREQUENCY) {
         opt_res = m_optimizer.find_minima_at(next.t, next.x, params,
@@ -150,16 +149,17 @@ public:
         // check if we need to rewind multiple time steps
         fmt::println("  Checking identity of new optima at t={:.2e}",
                      from_opt.t);
+        fmt::println("  Current candidates for y are             {:::.4e}", current.y);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}",
                      from_opt.y);
         if (from_opt.n_local_optima() <= current.n_local_optima()) {
+          fmt::println("  Optimizer may have vanished, from {:d} to {:d} optimizers.", current.n_local_optima(), from_opt.n_local_optima());
+          fmt::println("  Reordering optima to match {:::.4e}", current.y);
           correct_optimizer_permutation(from_opt, current);
-          fmt::println("  Optimizer may have vanished.");
-          fmt::println("  Reordered optima to match {:::.4e}", from_opt.y);
-          fmt::println("               new order is {:::.4e}", current.y);
+          fmt::println("               new order is {:::.4e}", from_opt.y);
         } else {
-          correct_optimizer_permutation(current, from_opt);
           fmt::println("  Optimizer emerged.");
+          correct_optimizer_permutation(current, from_opt);
           fmt::println("  Reordered optima to match {:::.4e}", current.y);
           fmt::println("               new order is {:::.4e}", from_opt.y);
         }
@@ -175,6 +175,7 @@ public:
         if (event_found)
           fmt::println("  event found by gopt");
         next = std::move(from_opt);
+        fmt::println("  moved optimizer results into next; t={:.4f}, x={:.4f}, y={:::.4e}", next.t, next.x, next.y);
         iterations_since_search = 0;
       } else {
         // checking for events with i_star isn't correct.
@@ -376,14 +377,14 @@ private:
   }
 
   /**
-   * @brief Integrate the differential part of the DAEO from time @c t to @c
-   * t+dt
+   * @brief Integrate the  DAEO from time @c t to @c t+dt
    * @param[in] start The value of the solution at @c t=t0
    * @param[in] dt The size of the time step to integrate.
    * @param[in] p Parameter vector.
    * @return The value of solution at @c t=t+dt.
    * @details Integrates the ODE using the trapezoidal rule. Additionally solves
    * ∂h/∂y_k = 0 simultaenously using Newton's method.
+   * DOES NOT UPDATE THE THE RESULT'S I_STAR!
    */
   solution_state_t integrate_daeo(solution_state_t const &start, NUMERIC_T dt,
                                   params_t const &p) {
@@ -440,40 +441,53 @@ private:
   }
 
   /**
-   * @brief Locate and correct an event that happens between @c start and @c
-   * end. We assume that no new optimizers emerge inside this time step!
-   * @param[in] start
-   * @param[in] end
-   * @param[in] p
+   * @brief Locate and correct an event between @c start and @c end. 
+   * Uses Newton's method, which has a tendency to escape the interval in question.
+   *
+   * @param[in] start The solution state at the beginning of the time step.
+   * @param[in] end The (incorrect) solution state at the end of the time step.
+   * @param[in] p Parameter vector.
    * @return Value of solution at event.
+   *
+   * @details We assume that no optimizers emerge or vanish inside this time step.
+   * This allows us to assume that @c start.y_star() and @c end.y_star() both exist
+   * as possible optimizers for the duration of the time step, even if we are only 
+   * provided with the results from global optimization. 
    */
   solution_state_t
   locate_and_integrate_to_event_newton(solution_state_t const &start,
                                        solution_state_t const &end,
                                        params_t const &p) {
+
+    // make local copies that only know about the swapped optimizer
+    solution_state_t left {start.t, start.x, 0, {start.y_star(), end.y_star()}};
+    solution_state_t right {end.t, end.x, 1, {start.y_star(), end.y_star()}};
     NUMERIC_T H, dHdt, dt_guess;
     solution_state_t guess;
-    dt_guess = (end.t - start.t) / 2;
+    dt_guess = (right.t - left.t) / 2;
     size_t iter = 0;
     bool escaped = false;
     while (iter < settings.MAX_NEWTON_ITERATIONS) {
       // integrate to t_guess
-      guess = integrate_daeo(start, dt_guess, p);
+      guess = integrate_daeo(left, dt_guess, p);
       // evaluate event function
-      H = event_function(guess.t, guess.x, guess.y[start.i_star],
-                         guess.y[end.i_star], p);
+      H = event_function(guess.t, guess.x, guess.y[left.i_star],
+                         guess.y[right.i_star], p);
+
       if (fabs(H) < settings.NEWTON_EPS) {
         break;
       }
       // only scream once
-      if (!escaped && (start.t > guess.t || guess.t > end.t)) {
+      if (!escaped && (left.t > guess.t || guess.t > right.t)) {
         fmt::println("  Escaped bounds on event locator!!");
         escaped = true;
         // breaking may save us here.
         break;
       }
-      dHdt = (event_function_ddx(guess.t, guess.x, guess.y[start.i_star],
-                                 guess.y[end.i_star], p) *
+
+      update_optimizer(guess, p);
+      dHdt = (event_function_ddx(guess.t, guess.x, guess.y[left.i_star],
+                                 guess.y[right.i_star], p) *
               m_xprime.value(guess.t, guess.x, guess.y_star(), p));
       // dHdt += partial h partial t at y1 and y2... maybe not necessary.
       // newton iteration.
@@ -486,29 +500,40 @@ private:
 
   /**
    * @brief Locate and correct an event that happens between @c start and @c end
-   * using Bisection We assume that no new optimizers emerge inside this time
-   * step!
-   * @param[in] start
-   * @param[in] end
-   * @param[in] p
+   * using bisection.
+   * @param[in] start The solution state at the beginning of the time step.
+   * @param[in] end The (incorrect) solution state at the end of the time step.
+   * @param[in] p Parameter vector.
    * @return Value of solution at event.
+   *
+   * @details We assume that no optimizers emerge or vanish inside this time step.
+   * This allows us to assume that @c start.y_star() and @c end.y_star() both exist
+   * as possible optimizers for the duration of the time step, even if we are only 
+   * provided with the results from global optimization. 
    */
   solution_state_t
   locate_and_integrate_to_event_bisect(solution_state_t const &start,
                                        solution_state_t const &end,
                                        params_t const &p) {
+    // make local copies that only know about the swapped optimizer
+    solution_state_t left {start.t, start.x, 0, {start.y_star(), end.y_star()}};
+    solution_state_t right {end.t, end.x, 1, {start.y_star(), end.y_star()}};
     solution_state_t guess;
     NUMERIC_T delta = (end.t - start.t) / 2;
     NUMERIC_T dt_guess = delta;
     NUMERIC_T H;
     size_t iter = 0;
-    while (iter <
-           settings.MAX_NEWTON_ITERATIONS) // maybe we need to set this higher
+    // Newton gains "one digit" of accuracy for every iteration (in nice cases)
+    // Bisection gains one power of 2 every iteration
+    // we should never need more iterations than for the worst-case newton solver here
+    while (iter < settings.MAX_NEWTON_ITERATIONS) 
     {
-      guess = integrate_daeo(start, dt_guess, p);
-      H = event_function(guess.t, guess.x, guess.y[start.i_star],
-                         guess.y[end.i_star], p);
-      delta = delta / 2;
+      delta = delta / 2; // Bisect.
+      guess = integrate_daeo(left, dt_guess, p);
+      H = event_function(guess.t, guess.x, guess.y[left.i_star],
+                         guess.y[right.i_star], p);
+      // maybe we need to choose a different tolerance for bisection, but using the same
+      // number of digits of accuracy for bisection and newton seems to work.
       if (H < settings.NEWTON_EPS) {
         break;
       } else if (H < 0) {
