@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <limits>
 #include <tuple>
 #include <vector>
@@ -63,30 +64,30 @@ public:
   using optimizer_t =
       BNBLocalOptimizer<OBJECTIVE, NUMERIC_T,
                         suggested_solver_policies<NUMERIC_T>, YDIMS, NPARAMS>;
-  
+
   /**
-  * @brief Type for an optimizer of the objective function.
-  */
+   * @brief Type for an optimizer of the objective function.
+   */
   using y_t = Eigen::Vector<NUMERIC_T, YDIMS>;
 
   /**
-  * @brief Type for the hessian matrix of the objective function.
-  */
+   * @brief Type for the hessian matrix of the objective function.
+   */
   using y_hessian_t = Eigen::Matrix<NUMERIC_T, YDIMS, YDIMS>;
 
   /**
-  * @brief Type of the parameter vector
-  */
+   * @brief Type of the parameter vector
+   */
   using params_t = Eigen::Vector<NUMERIC_T, NPARAMS>;
 
   /**
-  * @brief An interval of @c NUMERIC_TYPE
-  */
+   * @brief An interval of @c NUMERIC_TYPE
+   */
   using interval_t = typename optimizer_t::interval_t;
 
   /**
-  * @brief The type of the solution state
-  */
+   * @brief The type of the solution state
+   */
   using solution_state_t = DAEOSolutionState<NUMERIC_T, YDIMS>;
 
   DAEOTrackingSolver(XPRIME const &t_xprime, OBJECTIVE const &t_objective,
@@ -124,11 +125,11 @@ public:
     // next portion relies on the assumption that two minimizers of h don't
     // "cross paths" inside of a time step even if they did, would it really
     // matter? since we don't do any implicit function silliness we probably
-    // wouldn't even be able to tell if this did happen, but it may be beneficial to
-    // periodically check all of the y_is and see if they're close to each other
-    // before and after solving for the values at the next time step. This would
-    // trigger a search for minima of h(x, y) again, since we may have "lost"
-    // one
+    // wouldn't even be able to tell if this did happen, but it may be
+    // beneficial to periodically check all of the y_is and see if they're close
+    // to each other before and after solving for the values at the next time
+    // step. This would trigger a search for minima of h(x, y) again, since we
+    // may have "lost" one
 
     size_t iter = 0, iterations_since_search = 0;
     while (current.t < t_end) {
@@ -149,18 +150,22 @@ public:
         // check if we need to rewind multiple time steps
         fmt::println("  Checking identity of new optima at t={:.2e}",
                      from_opt.t);
-        fmt::println("  Current candidates for y are             {:::.4e}", current.y);
+        fmt::println("  Current candidates for y are             {:::.4e}",
+                     next.y);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}",
                      from_opt.y);
-        if (from_opt.n_local_optima() <= current.n_local_optima()) {
-          fmt::println("  Optimizer may have vanished, from {:d} to {:d} optimizers.", current.n_local_optima(), from_opt.n_local_optima());
-          fmt::println("  Reordering optima to match {:::.4e}", current.y);
-          correct_optimizer_permutation(from_opt, current);
+        // TODO these routines are BAD and need to be fixed before moving on
+        if (from_opt.n_local_optima() <= next.n_local_optima()) {
+          fmt::println(
+              "  Optimizer may have vanished, from {:d} to {:d} optimizers.",
+              next.n_local_optima(), from_opt.n_local_optima());
+          fmt::println("  Reordering optima to match {:::.4e}", next.y);
+          correct_optimizer_permutation(from_opt, next);
           fmt::println("               new order is {:::.4e}", from_opt.y);
         } else {
           fmt::println("  Optimizer emerged.");
-          correct_optimizer_permutation(current, from_opt);
-          fmt::println("  Reordered optima to match {:::.4e}", current.y);
+          correct_optimizer_permutation(next, from_opt);
+          fmt::println("  Reordered optima to match {:::.4e}", next.y);
           fmt::println("               new order is {:::.4e}", from_opt.y);
         }
 
@@ -175,7 +180,6 @@ public:
         if (event_found)
           fmt::println("  event found by gopt");
         next = std::move(from_opt);
-        fmt::println("  moved optimizer results into next; t={:.4f}, x={:.4f}, y={:::.4e}", next.t, next.x, next.y);
         iterations_since_search = 0;
       } else {
         // checking for events with i_star isn't correct.
@@ -286,6 +290,7 @@ private:
     return dy;
   }
 
+  // TODO BAD
   void correct_optimizer_permutation(solution_state_t const &fewer_optimizers,
                                      solution_state_t &more_optimizers) {
     vector<size_t> permutation(fewer_optimizers.n_local_optima());
@@ -328,10 +333,10 @@ private:
    * @param[in] dt Current time step size.
    * @param[in] p Parameter vector.
    */
-  Eigen::VectorX<NUMERIC_T>
-  trapezoidal_integrator(solution_state_t const &start,
-                         solution_state_t const &guess, NUMERIC_T const dt,
-                         params_t const &p) {
+  Eigen::VectorX<NUMERIC_T> trapezoidal_rule(solution_state_t const &start,
+                                             solution_state_t const &guess,
+                                             NUMERIC_T const dt,
+                                             params_t const &p) {
     int ydims = start.ydims();
     // fix i_star (assume no event in this part of the program)
     size_t i_star = start.i_star;
@@ -355,15 +360,13 @@ private:
    * @param[in] p Parameter vector.
    */
   Eigen::MatrixX<NUMERIC_T>
-  trapezoidal_integrator_jacobian(solution_state_t const &guess,
-                                  NUMERIC_T const dt, params_t const &p) {
+  trapezoidal_rule_jacobian(solution_state_t const &guess, NUMERIC_T const dt,
+                            params_t const &p) {
     using Eigen::seqN;
     int ydims = guess.ydims();
     int ndims = 1 + guess.n_local_optima() * ydims;
     Eigen::MatrixX<NUMERIC_T> result(ndims, ndims);
-    result(0, 0) =
-        -1 +
-        dt / 2 * m_xprime.grad_x(guess.t, guess.x, guess.y[guess.i_star], p);
+    result(0, 0) = -1 + dt / 2 * m_xprime.grad_x(guess.t, guess.x, guess.y[guess.i_star], p);
     for (size_t i = 0; i < guess.n_local_optima(); i++) {
       result(0, seqN(1 + i * ydims, ydims)) =
           dt / 2 * m_xprime.grad_y(guess.t, guess.x, guess.y[i], p);
@@ -394,8 +397,8 @@ private:
     Eigen::MatrixX<NUMERIC_T> jacG;
     size_t iter = 0;
     while (iter < settings.MAX_NEWTON_ITERATIONS) {
-      G = trapezoidal_integrator(start, next, dt, p);
-      jacG = trapezoidal_integrator_jacobian(next, dt, p);
+      G = trapezoidal_rule(start, next, dt, p);
+      jacG = trapezoidal_rule_jacobian(next, dt, p);
       diff = jacG.colPivHouseholderQr().solve(G);
       next.x = next.x - diff(0);
       for (size_t i = 0; i < start.n_local_optima(); i++) {
@@ -411,8 +414,8 @@ private:
   }
 
   /*
-      H and dHdt are used to find the precise event location by newton
-     iteration.
+      H and dHdt are used to find the precise event location
+      either by using newton iteration or the bisection method.
   */
 
   /**
@@ -440,18 +443,19 @@ private:
   }
 
   /**
-   * @brief Locate and correct an event between @c start and @c end. 
-   * Uses Newton's method, which has a tendency to escape the interval in question.
+   * @brief Locate and correct an event between @c start and @c end.
+   * Uses Newton's method, which has a tendency to escape the interval in
+   * question.
    *
    * @param[in] start The solution state at the beginning of the time step.
    * @param[in] end The (incorrect) solution state at the end of the time step.
    * @param[in] p Parameter vector.
    * @return Value of solution at event.
    *
-   * @details We assume that no optimizers emerge or vanish inside this time step.
-   * This allows us to assume that @c start.y_star() and @c end.y_star() both exist
-   * as possible optimizers for the duration of the time step, even if we are only 
-   * provided with the results from global optimization. 
+   * @details We assume that no optimizers emerge or vanish inside this time
+   * step. This allows us to assume that @c start.y_star() and @c end.y_star()
+   * both exist as possible optimizers for the duration of the time step, even
+   * if we are only provided with the results from global optimization.
    */
   solution_state_t
   locate_and_integrate_to_event_newton(solution_state_t const &start,
@@ -459,8 +463,8 @@ private:
                                        params_t const &p) {
 
     // make local copies that only know about the swapped optimizer
-    solution_state_t left {start.t, start.x, 0, {start.y_star(), end.y_star()}};
-    solution_state_t right {end.t, end.x, 1, {start.y_star(), end.y_star()}};
+    solution_state_t left{start.t, start.x, 0, {start.y_star(), end.y_star()}};
+    solution_state_t right{end.t, end.x, 1, {start.y_star(), end.y_star()}};
     NUMERIC_T H, dHdt, dt_guess;
     solution_state_t guess;
     dt_guess = (right.t - left.t) / 2;
@@ -505,18 +509,18 @@ private:
    * @param[in] p Parameter vector.
    * @return Value of solution at event.
    *
-   * @details We assume that no optimizers emerge or vanish inside this time step.
-   * This allows us to assume that @c start.y_star() and @c end.y_star() both exist
-   * as possible optimizers for the duration of the time step, even if we are only 
-   * provided with the results from global optimization. 
+   * @details We assume that no optimizers emerge or vanish inside this time
+   * step. This allows us to assume that @c start.y_star() and @c end.y_star()
+   * both exist as possible optimizers for the duration of the time step, even
+   * if we are only provided with the results from global optimization.
    */
   solution_state_t
   locate_and_integrate_to_event_bisect(solution_state_t const &start,
                                        solution_state_t const &end,
                                        params_t const &p) {
     // make local copies that only know about the swapped optimizer
-    solution_state_t left {start.t, start.x, 0, {start.y_star(), end.y_star()}};
-    solution_state_t right {end.t, end.x, 1, {start.y_star(), end.y_star()}};
+    solution_state_t left{start.t, start.x, 0, {start.y_star(), end.y_star()}};
+    solution_state_t right{end.t, end.x, 1, {start.y_star(), end.y_star()}};
     solution_state_t guess;
     NUMERIC_T delta = (end.t - start.t) / 2;
     NUMERIC_T dt_guess = delta;
@@ -524,16 +528,17 @@ private:
     size_t iter = 0;
     // Newton gains "one digit" of accuracy for every iteration (in nice cases)
     // Bisection gains one power of 2 every iteration
-    // we should never need more iterations than for the worst-case newton solver here
-    while (iter < settings.MAX_NEWTON_ITERATIONS) 
-    {
+    // we should never need more iterations than for the worst-case newton
+    // solver here
+    while (iter < settings.MAX_NEWTON_ITERATIONS) {
       delta = delta / 2; // Bisect.
       guess = integrate_daeo(left, dt_guess, p);
       H = event_function(guess.t, guess.x, guess.y[left.i_star],
                          guess.y[right.i_star], p);
-      // maybe we need to choose a different tolerance for bisection, but using the same
-      // number of digits of accuracy for bisection and newton seems to work.
-      if (H < settings.NEWTON_EPS) {
+      // maybe we need to choose a different tolerance for bisection, but using
+      // the same number of digits of accuracy for bisection and newton seems to
+      // work.
+      if (fabs(H) < settings.NEWTON_EPS) {
         break;
       } else if (H < 0) {
         dt_guess += delta;
