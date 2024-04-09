@@ -9,12 +9,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <limits>
 #include <queue>
 #include <vector>
 
 #include "Eigen/Dense" // must include Eigen BEFORE dco/c++
 #include "boost/numeric/interval.hpp"
+#include "boost/numeric/interval/utility_fwd.hpp"
 #include "dco.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
@@ -297,6 +299,11 @@ private:
     return HESSIAN_MAYBE_INDEFINITE;
   }
 
+  bool zero_in_or_absolutely_near(interval_t y, NUMERIC_T tol) {
+    return boost::numeric::zero_in(y) ||
+           (fabs(y.lower()) < tol && fabs(y.upper()) < tol);
+  }
+
   /**
    * @brief Bisects the n-dimensional range @c x in each dimension that is not
    * flagged in @c dims_converged. Additionally performs a gradient check at the
@@ -320,11 +327,10 @@ private:
         y_interval_t splitting_plane = res[j];
         splitting_plane(i).assign(split_point, split_point);
         y_interval_t grad = m_objective.grad_y(t, x, splitting_plane, p);
-        bool optimum_on_splitting_plane = boost::numeric::zero_in(grad(i));
-        if (optimum_on_splitting_plane) {
+        if (zero_in_or_absolutely_near(grad(i), settings.TOL_Y)) {
           // capture the splitting plane in an interval smaller than TOL
-          NUMERIC_T cut_L = split_point - settings.TOL_Y / 4;
-          NUMERIC_T cut_R = split_point + settings.TOL_Y / 4;
+          NUMERIC_T cut_L = (split_point + res[j](i).lower()) / 2;
+          NUMERIC_T cut_R = (split_point + res[j](i).upper()) / 2;
           res.emplace_back(y.rows());
           res.back() = res[j];
           res.back()(i).assign(cut_L, cut_R);
@@ -344,7 +350,6 @@ private:
         }
       }
     }
-    // fmt::print("Split interval {::.2f} into {:::.2f}\n", y, res);
     return res;
   }
 
