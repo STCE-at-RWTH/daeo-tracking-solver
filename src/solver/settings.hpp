@@ -34,7 +34,7 @@ template <typename NUMERIC_T> struct DAEOSolverSettings {
   NUMERIC_T y0_max;
 
   size_t SEARCH_FREQUENCY = 20;
-  size_t MAX_NEWTON_ITERATIONS = 40;
+  size_t MAX_NEWTON_ITERATIONS = 30;
   NUMERIC_T NEWTON_EPS = 1.0e-8;
   NUMERIC_T EVENT_EPS = 5.0e-6; // this may be computeable from limits
 

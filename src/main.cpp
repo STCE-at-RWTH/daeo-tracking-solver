@@ -133,7 +133,7 @@ void simple_example_perf_study() {
   typename solver_t::params_t p(2.0, 1.0, 0.5, pi / 2);
 
   DAEOSolverSettings<double> solver_s;
-  solver_s.NEWTON_EPS = 1.0e-10;
+  solver_s.NEWTON_EPS = 1.0e-8;
   solver_s.EVENT_EPS = 5.0e-6;
   solver_s.y0_min = -6.0;
   solver_s.y0_max = 6.0;
@@ -141,7 +141,7 @@ void simple_example_perf_study() {
   BNBOptimizerSettings<double> opt_s;
   opt_s.LOGGING_ENABLED = false;
 
-  constexpr int NUM_SOLVER_RUNS = 2;
+  constexpr int NUM_SOLVER_RUNS = 6;
 
   /**
    * TRACK LOCAL, NEVER REOPTIMIZE
