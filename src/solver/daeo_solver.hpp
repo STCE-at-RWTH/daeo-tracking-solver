@@ -182,31 +182,20 @@ public:
         next = std::move(from_opt);
         iterations_since_search = 0;
       } else {
-        // checking for events with i_star isn't correct.
-        // z.B we pick up an optimizer at the _beginning_ of next.y
-        // during a global optimizer run
-        // so we have to use a more expensive check
-        // or avoid this simple check when gopt has run
+        // we avoid this simple check when gopt has run
         update_optimizer(next, params);
         event_found = next.i_star != current.i_star;
       }
-
+      // correct event if enabled in settings
       if (settings.EVENT_DETECTION_AND_CORRECTION && event_found) {
         fmt::println("  Detected global optimzer switch between (t={:.6e}, "
                      "y={::.4e}) and (t={:.6e}, y={::.4e})",
                      current.t, current.y_star(), next.t, next.y_star());
         fmt::println("    Jump size is {:.6e}",
                      (current.y_star() - next.y_star()).norm());
-        fmt::println("    Integrating to event from t={:.6e}", current.t);
-        // locate the event and take a time step to it
         solution_state_t event =
             locate_and_integrate_to_event_bisect(current, next, params);
         fmt::println("    Event at t={:.6e}, x={:.4e}", event.t, event.x);
-        // assign new global optimizer index
-        fmt::println("    Old optimizers are {:::.4e}, i_star is {:d}",
-                     current.y, current.i_star);
-        fmt::println("    New optimizers are {:::.4e}, i_star is {:d}", event.y,
-                     event.i_star);
         NUMERIC_T dt_event = event.t - current.t;
         if (settings.LOGGING_ENABLED) {
           dy = compute_dy(current.y, event.y);
@@ -216,10 +205,6 @@ public:
         }
         // complete time step from event back to the grid.
         NUMERIC_T dt_grid = dt - dt_event;
-        fmt::println("    Integrating away from event at t={:.6e}, x={:.4e} "
-                     "with step size {:.6e}",
-                     event.t, event.x, dt_grid);
-        fmt::println("    End time of step is t={:.6e}", event.t + dt_grid);
         next = integrate_daeo(event, dt_grid, params);
       }
       // we don't need to handle events, we can move on.
@@ -259,7 +244,9 @@ private:
       y.back() = y_i.unaryExpr([](auto ival) { return median(ival); });
     }
     solution_state_t ss{t, x, 0, y};
-    update_optimizer(ss, p);
+    if (ss.y.size() > 1) {
+      update_optimizer(ss, p);
+    }
     return ss;
   }
 
@@ -366,7 +353,9 @@ private:
     int ydims = guess.ydims();
     int ndims = 1 + guess.n_local_optima() * ydims;
     Eigen::MatrixX<NUMERIC_T> result(ndims, ndims);
-    result(0, 0) = -1 + dt / 2 * m_xprime.grad_x(guess.t, guess.x, guess.y[guess.i_star], p);
+    result(0, 0) =
+        -1 +
+        dt / 2 * m_xprime.grad_x(guess.t, guess.x, guess.y[guess.i_star], p);
     for (size_t i = 0; i < guess.n_local_optima(); i++) {
       result(0, seqN(1 + i * ydims, ydims)) =
           dt / 2 * m_xprime.grad_y(guess.t, guess.x, guess.y[i], p);
