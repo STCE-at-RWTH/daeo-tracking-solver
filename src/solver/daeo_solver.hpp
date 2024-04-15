@@ -240,8 +240,8 @@ public:
   }
 
 private:
-  DAEOWrappedFunction<XPRIME> const m_xprime;
-  DAEOWrappedFunction<OBJECTIVE> const m_objective;
+  DAEOWrappedFunction<XPRIME> m_xprime;
+  DAEOWrappedFunction<OBJECTIVE> m_objective;
   DAEOSolverSettings<NUMERIC_T> settings;
   optimizer_t m_optimizer;
 

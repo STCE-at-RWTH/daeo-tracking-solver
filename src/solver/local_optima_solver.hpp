@@ -89,7 +89,7 @@ private:
   /**
    * @brief The objective function h(t, x, y; p) of which to find the minima.
    */
-  DAEOWrappedFunction<OBJECTIVE_T> const m_objective;
+  DAEOWrappedFunction<OBJECTIVE_T> m_objective;
   BNBOptimizerSettings<NUMERIC_T> const settings;
 
   /**
