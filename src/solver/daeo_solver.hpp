@@ -187,25 +187,38 @@ public:
         event_found = next.i_star != current.i_star;
       }
       // correct event if enabled in settings
+      // we make the (bold) assumption that during a step containing an event,
+      // no new local optimizers appear, and no current optimizers vanish
+      // as long as the lost/gained optimizers are _not_ the global optimizer
+      // at either end of the time step, this could be relaxed.
       if (settings.EVENT_DETECTION_AND_CORRECTION && event_found) {
         fmt::println("  Detected global optimzer switch between (t={:.6e}, "
                      "y={::.4e}) and (t={:.6e}, y={::.4e})",
                      current.t, current.y_star(), next.t, next.y_star());
         fmt::println("    Jump size is {:.6e}",
                      (current.y_star() - next.y_star()).norm());
-        solution_state_t event =
+        solution_state_t computed_event =
             locate_and_integrate_to_event_bisect(current, next, params);
-        fmt::println("    Event at t={:.6e}, x={:.4e}", event.t, event.x);
-        NUMERIC_T dt_event = event.t - current.t;
+        fmt::println("    Event at t={:.6e}, x={:.4e}", computed_event.t, computed_event.x);
+        NUMERIC_T dt_event = computed_event.t - current.t;
         if (settings.LOGGING_ENABLED) {
-          dy = compute_dy(current.y, event.y);
-          logger.log_event_correction(clock::now(), iter, event.t, dt_event,
-                                      event.x, event.x - current.x, event.y, dy,
-                                      event.i_star);
+          dy = compute_dy(current.y, computed_event.y);
+          logger.log_event_correction(clock::now(), iter, computed_event.t, dt_event,
+                                      computed_event.x, computed_event.x - current.x, computed_event.y, dy,
+                                      computed_event.i_star);
         }
         // complete time step from event back to the grid.
         NUMERIC_T dt_grid = dt - dt_event;
-        next = integrate_daeo(event, dt_grid, params);
+        // project optimizers forward by integrating to event time
+        solution_state_t at_event = integrate_daeo(current, dt_event, params);
+        // update the relevant optimizers to the event
+        // i.e. current global optimizer -> computed event's former global optimizer
+        // and new global optimizer -> computed event's new global optimizer
+        // these copies should be meaningless, since the integration step is the same...
+        at_event.y[current.i_star] = computed_event.y[0];
+        at_event.y[next.i_star] = computed_event.y[1];
+        at_event.i_star = next.i_star;
+        next = integrate_daeo(computed_event, dt_grid, params);
       }
       // we don't need to handle events, we can move on.
       if (settings.LOGGING_ENABLED) {
