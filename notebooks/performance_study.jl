@@ -8,11 +8,13 @@ using InteractiveUtils
 begin
 	using CSV
 	using DataFrames
+	using Dates
 	using DelimitedFiles
 	using LaTeXStrings
 	using LinearAlgebra
 	using Plots
 	using PlutoUI
+	using Unitful
 end
 
 # ╔═╡ 3bb6f7d5-d76a-4c1f-af95-777dea2b342f
@@ -53,7 +55,7 @@ So far, we have:
 """
 
 # ╔═╡ d13c2870-69e8-40fb-a44c-84644fb4a96f
-const N_RUNS::Int = 6
+N_RUNS::Int = 6
 
 # ╔═╡ 7b47bd51-c459-49b7-9d94-2724a3a29bf9
 md"""
@@ -125,7 +127,7 @@ function alt_error_calc(df)
 	live_rows = filter(df) do row
 		row.EVENTID in (SOLVER_BEGIN, TIME_STEP_EVENT_CORRECTED, TIME_STEP_NO_EVENT)  && row.T <= 1.0
 	end
-	last(df.ERR)^2
+	abs(last(df.ERR))
 end
 
 # ╔═╡ 16ee85b1-9c79-4991-bf85-fa01811e8e71
@@ -142,8 +144,17 @@ total_runtime(df) = df[df.EVENTID .== SOLVER_COMPLETE, :TSTAMP] |> first
 # ╔═╡ 72f64c05-11fd-4b40-83b7-44cd2e5bc132
 time_step_size(df) = df.DT |> first 
 
+# ╔═╡ 700b4659-8718-466c-919b-e7cae35a2496
+parse(Float64, "1002μs"[1:end-3])*1.0e6
+
+# ╔═╡ 9ed2ccad-2000-4c33-9869-29b04bdbd96b
+T = typeof(1.0u"μs")
+
+# ╔═╡ 1b719792-af24-4524-b00a-3ad183793af8
+uparse("1002μs")
+
 # ╔═╡ 0dfd1b88-3003-4bf5-ac56-407c69794053
-simple_ex_err_transform(df) = transform!(df, [:T, :X] => ((t, x) -> x-x1_exact.(t)) => :ERR)
+simple_ex_err_transform!(df) = transform!(df, [:T, :X] => ((t, x) -> x-x1_exact.(t)) => :ERR)
 
 # ╔═╡ 63468882-dbfe-429d-aead-de55cc4ec7b1
 function parse_YDY(str::AbstractString)
@@ -157,26 +168,23 @@ end
 # ╔═╡ 817be9c6-d5d1-4a31-9879-3b9f2cb9cb28
 parse_YDY(::Missing) = missing
 
-# ╔═╡ a936713d-da19-45de-99e8-b3ab835c2beb
-data_file_directory = normpath(joinpath(pwd(), "../data/out"))
-
-# ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
-row_selector = ∈((SOLVER_BEGIN, TIME_STEP_NO_EVENT, TIME_STEP_EVENT_CORRECTED))
-
 # ╔═╡ bdabfe2f-f2a8-4441-9d95-a2f75fa223da
  function make_data(file)
 	raw_data = (CSV.File(file) |> DataFrame)
 	transform!(raw_data, :EVENTID => (id -> SolverEvents.(id)) => :EVENTID)
-	rows = row_selector.(raw_data.EVENTID)
+	transform!(raw_data, :TSTAMP => (str -> uparse.(str)) => :TSTAMP)
 	for col = [:Y, :DY]
 		transform!(raw_data, col => (y -> map(parse_YDY, y)) => col)
 	end
 	return raw_data
 end
 
+# ╔═╡ a936713d-da19-45de-99e8-b3ab835c2beb
+data_file_directory = normpath(joinpath(pwd(), "../data/out"))
+
 # ╔═╡ c4520e37-b3bb-44f5-ae8b-5bac3806c384
-with_events = map(joinpath(data_file_directory, "se_tracking_10_minus$(i)_solver_log.tsv") for i=0:N_RUNS) do file
-	make_data(file) |> simple_ex_err_transform 
+with_events = map(joinpath(data_file_directory, "se_tracking_10_minus$(i)_solver_log.tsv") for i=0:(N_RUNS-1)) do file
+	make_data(file) |> simple_ex_err_transform!
 end;
 
 # ╔═╡ 7de10fca-3f6b-4d01-aea4-7e060abe98cf
@@ -193,7 +201,7 @@ df1 = filter(with_events[3]) do row
 end
 
 # ╔═╡ dde1ec3f-512b-4103-95d0-722802c3ed79
-diff(df1.T)
+diff(df1.T)[15:40]
 
 # ╔═╡ af8e69b5-9a27-4201-b97d-b2326efa9bd5
 map(with_events) do df
@@ -204,18 +212,26 @@ map(with_events) do df
 end .- -log(0.5)/3
 
 # ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
-only_global = map(joinpath(data_file_directory, "se_tracking_onlyglobal_10_minus$(i)_solver_log.tsv") for i=0:N_RUNS) do file
-	make_data(file) |> simple_ex_err_transform 
+only_global = map(joinpath(data_file_directory, "se_tracking_onlyglobal_10_minus$(i)_solver_log.tsv") for i=0:(N_RUNS-1)) do file
+	make_data(file) |> simple_ex_err_transform!
 end;
 
+# ╔═╡ bd7da423-3545-4141-9890-b5eadd4a24b1
+total_runtime.(only_global)
+
+# ╔═╡ fcedf51d-94fa-4d02-bc3d-5164bac69adf
+count(eachrow(only_global[end])) do r
+	r.EVENTID == SOLVER_COMPLETE
+end
+
 # ╔═╡ fc36373b-efb6-475e-975a-4d7dd71f454f
-without_events = map(joinpath(data_file_directory, "se_tracking_noevents_10_minus$(i)_solver_log.tsv") for i=0:N_RUNS) do file
-	make_data(file) |> simple_ex_err_transform 
+without_events = map(joinpath(data_file_directory, "se_tracking_noevents_10_minus$(i)_solver_log.tsv") for i=0:(N_RUNS-1)) do file
+	make_data(file) |> simple_ex_err_transform!
 end;
 
 # ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
 let n = 2
-	p = scatter([-log(0.5)/3], x1_exact, label="Event")
+	p = scatter([-log(0.5)/3], x1_exact, label="Event", marker=:x)
 	plot!(p, 0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
 	scatter!(p, with_events[n].T[1:end-2], with_events[n].X[1:end-2], label=L"x_{ev}(t)", marker=:plus, msw=2)
 	scatter!(p, without_events[n].T[1:end-2], without_events[n].X[1:end-2], label=L"x_{noev}(t)", marker=:x)
@@ -228,15 +244,20 @@ let
 	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:+, msw=2, legend=:topleft, label="With Event Correction", xlabel=L"\Delta t")
 	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:x, msw=2, label="Without Event Correction", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}")
 	plot!(p, [10.0^h for h=0:-1:-6], [t->0.1*t, t->0.1*t^2], label=[L"O(\Delta t)" L"O(\Delta t^2)"], ls=:dashdot)
-	scatter!(p, time_step_size.(with_events), alt_error_calc.(with_events))
-	scatter!(p, time_step_size.(without_events), alt_error_calc.(without_events))
 end
 
 # ╔═╡ a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
 let
-	data = hcat(total_runtime.(with_events), total_runtime.(without_events), total_runtime.(only_global))
-	scatter(time_step_size.(with_events), data[1:end, :], xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime (s)", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], title="Runtime Cost of DAEO Solver")
+	data = map(hcat(total_runtime.(with_events), 
+					total_runtime.(without_events), 
+					total_runtime.(only_global))) do v
+		ustrip(Float64, u"s", v)
+	end
+	scatter(time_step_size.(with_events), data[1:end, :], xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime (ms)", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], title="Runtime Cost of DAEO Solver", xflip=true, yminorgrid=true, legend=:topleft)
 end
+
+# ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
+row_selector = ∈((SOLVER_BEGIN, TIME_STEP_NO_EVENT, TIME_STEP_EVENT_CORRECTED))
 
 # ╔═╡ 689bb63c-7dd7-492d-973c-989b510fa4fc
 md"""
@@ -255,7 +276,7 @@ let
 	events = filter(gw_data_lowtol) do row
 		row.EVENTID == TIME_STEP_EVENT_CORRECTED
 	end
-	scatter!(p, events.T, events.X)
+	#scatter!(p, events.T, events.X)
 	p
 end
 
@@ -266,14 +287,14 @@ let
 		row.EVENTID == TIME_STEP_EVENT_CORRECTED
 	end
 	for evt ∈ eachrow(events)
-		plot!(p, [evt.T, evt.T], [0, 6], ls=:dashdot, lw=1, label=false, color=:black)
+		plot!(p, [evt.T, evt.T], [0, 0.5], ls=:dashdot, lw=1, label=false, color=:black)
 	end
 	p
 end
 
 # ╔═╡ a54f34ab-e4a4-4f52-a394-2588b63f345d
 let
-	p = plot(gw_data_hightol.T, gw_data_hightol.X, legend=false, title="Cursed Solution")
+	p = plot(gw_data_hightol.T, gw_data_hightol.X, legend=false)
 	events = filter(gw_data_hightol) do row
 		row.EVENTID == TIME_STEP_EVENT_CORRECTED
 	end
@@ -286,11 +307,22 @@ PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+
+[compat]
+CSV = "~0.10.12"
+DataFrames = "~1.6.1"
+DelimitedFiles = "~1.9.1"
+LaTeXStrings = "~1.3.1"
+Plots = "~1.40.0"
+PlutoUI = "~0.7.55"
+Unitful = "~1.19.0"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -299,7 +331,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.2"
 manifest_format = "2.0"
-project_hash = "837b389c9621c3f450885b3bca93ced80d12aec5"
+project_hash = "dfed254919f094610bf536491d8f7d1baa02d7d7"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -1490,6 +1522,8 @@ version = "1.4.1+1"
 # ╠═c4520e37-b3bb-44f5-ae8b-5bac3806c384
 # ╠═a2806825-6c18-4659-9021-9f1bc5648d98
 # ╠═fc36373b-efb6-475e-975a-4d7dd71f454f
+# ╠═bd7da423-3545-4141-9890-b5eadd4a24b1
+# ╠═fcedf51d-94fa-4d02-bc3d-5164bac69adf
 # ╟─7b47bd51-c459-49b7-9d94-2724a3a29bf9
 # ╠═7de10fca-3f6b-4d01-aea4-7e060abe98cf
 # ╠═baa48d9b-50e3-458e-8105-568d96453209
@@ -1498,7 +1532,7 @@ version = "1.4.1+1"
 # ╠═dde1ec3f-512b-4103-95d0-722802c3ed79
 # ╠═af8e69b5-9a27-4201-b97d-b2326efa9bd5
 # ╠═a36bf3e6-81e5-4d84-8181-5418fd061b6f
-# ╟─43ee777f-8b59-402e-9ee2-1066d4127b41
+# ╠═43ee777f-8b59-402e-9ee2-1066d4127b41
 # ╠═489e5666-93b5-4198-aba1-c2eb5da5551f
 # ╟─de7bffb5-703b-486f-8eba-320cd49799c7
 # ╠═f4cda422-6bb2-4c9f-acce-500be251a9d0
@@ -1512,6 +1546,9 @@ version = "1.4.1+1"
 # ╠═16ee85b1-9c79-4991-bf85-fa01811e8e71
 # ╠═ee3ec426-0a64-434e-99f7-f982e654ed8f
 # ╠═72f64c05-11fd-4b40-83b7-44cd2e5bc132
+# ╠═700b4659-8718-466c-919b-e7cae35a2496
+# ╠═9ed2ccad-2000-4c33-9869-29b04bdbd96b
+# ╠═1b719792-af24-4524-b00a-3ad183793af8
 # ╠═bdabfe2f-f2a8-4441-9d95-a2f75fa223da
 # ╠═0dfd1b88-3003-4bf5-ac56-407c69794053
 # ╠═63468882-dbfe-429d-aead-de55cc4ec7b1

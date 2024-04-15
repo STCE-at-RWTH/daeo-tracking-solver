@@ -53,7 +53,7 @@ inline auto format_as(OptimizerTestCode evc) { return fmt::underlying(evc); }
 
 constexpr char OPTIMIZER_LOG_COLUMNS[]{
     "TASKNUM\tTSTAMP\tEVENTID\tEXTRACODE\tX\tH\tDHDX\tD2HDX2\tCONVERGENCE"};
-constexpr char LOG_TNUM_TSTAMP[]{"{:d}\t{:%S}\t"};
+constexpr char LOG_TNUM_TSTAMP[]{"{:d}\t{}\t"};
 constexpr char LOG_EID_EXTRA[]{"{:d}\t{:d}\t"};
 constexpr char LOG_NUMERIC_VAL[]{"{:.8e}\t"};
 constexpr char LOG_ITERABLE_NUMERIC_VALS[]{"{::.8e}\t"};
@@ -91,8 +91,8 @@ public:
   void log_computation_begin(sys_time_point_t time, size_t tasknum,
                              Y const &domain, size_t threadid = 0) {
     m_logging_start = time;
-    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum,
-               time - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = time - m_logging_start;
+    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, deltaT);
     fmt::print(outs[threadid], LOG_EID_EXTRA, 0, 0);
     fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, domain);
     fmt::print(outs[threadid], "\t\t\t\n");
@@ -100,8 +100,8 @@ public:
 
   void log_computation_end(sys_time_point_t time, size_t tasknum,
                            size_t n_results, size_t threadid = 0) {
-    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum,
-               time - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = time - m_logging_start;
+    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, deltaT);
     fmt::print(outs[threadid], LOG_EID_EXTRA, OPTIMIZATION_COMPLETE, n_results);
     fmt::print(outs[threadid], "\t");
     fmt::print(outs[threadid], "\t\t\t\n");
@@ -110,8 +110,8 @@ public:
   template <std::ranges::range Y>
   void log_task_begin(sys_time_point_t time, size_t tasknum, Y const &y,
                       size_t threadid = 0) {
-    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum,
-               time - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = time - m_logging_start;
+    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, deltaT);
     fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_BEGIN, 0);
     fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
     fmt::print(outs[threadid], "\t\t\t\n");
@@ -120,8 +120,8 @@ public:
   template <std::ranges::range Y>
   void log_task_complete(sys_time_point_t time, size_t tasknum, Y const &y,
                          size_t reason, size_t threadid = 0) {
-    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum,
-               time - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = time - m_logging_start;
+    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, deltaT);
     fmt::print(outs[threadid], LOG_EID_EXTRA, TASK_COMPLETE, reason);
     fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
     fmt::print(outs[threadid], "\t\t\t\n");
@@ -130,8 +130,8 @@ public:
   void log_convergence_test(sys_time_point_t time, size_t tasknum,
                             vector<bool> const &convergence,
                             size_t threadid = 0) {
-    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum,
-               time - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = time - m_logging_start;
+    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, deltaT);
     fmt::print(outs[threadid], LOG_EID_EXTRA, CONVERGENCE_TEST, 0);
     fmt::print(outs[threadid], "\t\t\t\t{::d}\n", convergence);
   }
@@ -139,8 +139,8 @@ public:
   template <typename T, std::ranges::range Y, std::ranges::range DHDY>
   void log_gradient_test(sys_time_point_t time, size_t tasknum, Y const &y,
                          T const &h, DHDY const &dhdy, size_t threadid = 0) {
-    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum,
-               time - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = time - m_logging_start;
+    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, deltaT);
     fmt::print(outs[threadid], LOG_EID_EXTRA, GRADIENT_TEST, 0);
     fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
     fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
@@ -157,8 +157,8 @@ public:
                         OptimizerTestCode testres, Y const &y, T const &h,
                         DHDY const &dhdy, DDHDDY_ROWS &d2hdy2,
                         size_t threadid = 0) {
-    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum,
-               time - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = time - m_logging_start;
+    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, deltaT);
     fmt::print(outs[threadid], LOG_EID_EXTRA, HESSIAN_TEST, testres);
     fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
     fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
@@ -177,8 +177,8 @@ public:
                      size_t combined_results, Y const &y, T const &h,
                      DHDY const &dhdy, DDHDYY_ROWS const &d2hdy2,
                      vector<bool> const &convergence, size_t threadid = 0) {
-    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum,
-               time - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = time - m_logging_start;
+    fmt::print(outs[threadid], LOG_TNUM_TSTAMP, tasknum, deltaT);
     fmt::print(outs[threadid], LOG_EID_EXTRA, ALL_TESTS, combined_results);
     fmt::print(outs[threadid], LOG_ITERABLE_NUMERIC_VALS, y);
     fmt::print(outs[threadid], LOG_NUMERIC_VAL, h);
@@ -216,10 +216,11 @@ public:
   ~DAEOSolverLogger() { out.close(); }
 
   template <typename T>
-  void log_computation_begin(sys_time_point_t const time, size_t const iter,
+  void log_computation_begin(sys_time_point_t const tstamp, size_t const iter,
                              T const t0, T const dt0, T const x0) {
-    m_logging_start = time;
-    fmt::print(out, LOG_TNUM_TSTAMP, iter, time - m_logging_start);
+    m_logging_start = tstamp;
+    std::chrono::duration<double, std::micro> deltaT = tstamp - m_logging_start;
+    fmt::print(out, LOG_TNUM_TSTAMP, iter, deltaT);
     fmt::print(out, LOG_EID_EXTRA, SOLVER_BEGIN, 0);
     fmt::print(out, LOG_NUMERIC_VAL, t0);
     fmt::print(out, LOG_NUMERIC_VAL, dt0);
@@ -232,7 +233,8 @@ public:
   void log_computation_end(sys_time_point_t const tstamp, size_t const iter,
                            T const t, T const x, Y const &y,
                            size_t const i_star) {
-    fmt::print(out, LOG_TNUM_TSTAMP, iter, tstamp - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = tstamp - m_logging_start;
+    fmt::print(out, LOG_TNUM_TSTAMP, iter, deltaT);
     fmt::print(out, LOG_EID_EXTRA, SOLVER_COMPLETE, 0);
     fmt::print(out, LOG_NUMERIC_VAL, t);
     // no dt
@@ -250,7 +252,8 @@ public:
   void log_global_optimization(sys_time_point_t const tstamp, size_t const iter,
                                T const t, T const x, Y const &y,
                                size_t const i_star) {
-    fmt::print(out, LOG_TNUM_TSTAMP, iter, tstamp - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = tstamp - m_logging_start;
+    fmt::print(out, LOG_TNUM_TSTAMP, iter, deltaT);
     fmt::print(out, LOG_EID_EXTRA, OPTIMIZE, 0);
     fmt::print(out, LOG_NUMERIC_VAL, t);
     // no dt
@@ -268,7 +271,8 @@ public:
   void log_time_step(sys_time_point_t const tstamp, size_t const iter,
                      T const t, T const dt, T const x, T const dx, Y const &y,
                      Y const &dydt, size_t const i_star) {
-    fmt::print(out, LOG_TNUM_TSTAMP, iter, tstamp - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = tstamp - m_logging_start;
+    fmt::print(out, LOG_TNUM_TSTAMP, iter, deltaT);
     fmt::print(out, LOG_EID_EXTRA, TIME_STEP_NO_EVENT, 0);
     fmt::print(out, LOG_NUMERIC_VAL, t);
     fmt::print(out, LOG_NUMERIC_VAL, dt);
@@ -283,7 +287,8 @@ public:
   void log_event_correction(sys_time_point_t const tstamp, size_t const iter,
                             T const t, T const dt, T const x, T const dx,
                             Y const &y, Y const &dydt, size_t const i_star) {
-    fmt::print(out, LOG_TNUM_TSTAMP, iter, tstamp - m_logging_start);
+    std::chrono::duration<double, std::micro> deltaT = tstamp - m_logging_start;
+    fmt::print(out, LOG_TNUM_TSTAMP, iter, deltaT);
     fmt::print(out, LOG_EID_EXTRA, TIME_STEP_EVENT_CORRECTED, 0);
     fmt::print(out, LOG_NUMERIC_VAL, t);
     fmt::print(out, LOG_NUMERIC_VAL, dt);
