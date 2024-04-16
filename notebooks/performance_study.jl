@@ -55,7 +55,7 @@ So far, we have:
 """
 
 # ╔═╡ d13c2870-69e8-40fb-a44c-84644fb4a96f
-N_RUNS::Int = 6
+N_RUNS::Int = 7
 
 # ╔═╡ 7b47bd51-c459-49b7-9d94-2724a3a29bf9
 md"""
@@ -68,19 +68,6 @@ function x1_exact(t)
 	A = -2 * t_event
 	return t < t_event ? exp(-3*t) : exp(-t + A)
 end
-
-# ╔═╡ de7bffb5-703b-486f-8eba-320cd49799c7
-md"""
-There's a problem here... both the solutions converge (good) with *the same order* (bad).
-
-Possible explanations:
-- ``L^1`` quadrature is too low order and the integration error dominates. 
-  - Quick fix: implement Simpson's rule.
-- The "simple example" is too simple, and doesn't actually need event treatment!
-  - Quick fix: choose a more complex example with ``\partial_t y \neq 0``
-- The integrator itself is of too low order.
-  - Less quick fix: change to an order 3+ integration step (Runge-Kutta?)
-"""
 
 # ╔═╡ f4cda422-6bb2-4c9f-acce-500be251a9d0
 l1_norm(x, dt::AbstractVector) = 0.5 * sum(dt .* (abs.(x[1:end-1]) + abs.(x[2:end])))
@@ -172,7 +159,10 @@ parse_YDY(::Missing) = missing
  function make_data(file)
 	raw_data = (CSV.File(file) |> DataFrame)
 	transform!(raw_data, :EVENTID => (id -> SolverEvents.(id)) => :EVENTID)
-	transform!(raw_data, :TSTAMP => (str -> uparse.(str)) => :TSTAMP)
+	tstamp_transformer(s) = begin
+		parse(Float64, s[1:end-3]) * u"μs"
+	end
+	transform!(raw_data, :TSTAMP => (str -> (tstamp_transformer.(str))) => :TSTAMP)
 	for col = [:Y, :DY]
 		transform!(raw_data, col => (y -> map(parse_YDY, y)) => col)
 	end
@@ -189,11 +179,6 @@ end;
 
 # ╔═╡ 7de10fca-3f6b-4d01-aea4-7e060abe98cf
 with_events[2]
-
-# ╔═╡ 2e14647e-1d44-40ab-b5b6-25166bfbdea2
-filter(with_events[2]) do r
-	!ismissing(r.DT) && r.DT <= 0
-end
 
 # ╔═╡ 848f19be-77a7-42ef-a868-c133a923c820
 df1 = filter(with_events[3]) do row
@@ -218,11 +203,6 @@ end;
 
 # ╔═╡ bd7da423-3545-4141-9890-b5eadd4a24b1
 total_runtime.(only_global)
-
-# ╔═╡ fcedf51d-94fa-4d02-bc3d-5164bac69adf
-count(eachrow(only_global[end])) do r
-	r.EVENTID == SOLVER_COMPLETE
-end
 
 # ╔═╡ fc36373b-efb6-475e-975a-4d7dd71f454f
 without_events = map(joinpath(data_file_directory, "se_tracking_noevents_10_minus$(i)_solver_log.tsv") for i=0:(N_RUNS-1)) do file
@@ -278,6 +258,16 @@ let
 	end
 	#scatter!(p, events.T, events.X)
 	p
+end
+
+# ╔═╡ 7b461e72-e896-4737-9640-7c050532e010
+count(eachrow(gw_data_lowtol)) do r
+	r.EVENTID == TIME_STEP_EVENT_CORRECTED
+end
+
+# ╔═╡ 89ef3cdb-66fb-4443-8dc1-a6df0a714f85
+count(eachrow(gw_data_lowtol)) do r
+	r.EVENTID == TIME_STEP_NO_EVENT
 end
 
 # ╔═╡ 87771b74-eddd-4514-b129-bb7350bc7ee8
@@ -1523,18 +1513,15 @@ version = "1.4.1+1"
 # ╠═a2806825-6c18-4659-9021-9f1bc5648d98
 # ╠═fc36373b-efb6-475e-975a-4d7dd71f454f
 # ╠═bd7da423-3545-4141-9890-b5eadd4a24b1
-# ╠═fcedf51d-94fa-4d02-bc3d-5164bac69adf
 # ╟─7b47bd51-c459-49b7-9d94-2724a3a29bf9
 # ╠═7de10fca-3f6b-4d01-aea4-7e060abe98cf
 # ╠═baa48d9b-50e3-458e-8105-568d96453209
-# ╠═2e14647e-1d44-40ab-b5b6-25166bfbdea2
 # ╠═848f19be-77a7-42ef-a868-c133a923c820
 # ╠═dde1ec3f-512b-4103-95d0-722802c3ed79
 # ╠═af8e69b5-9a27-4201-b97d-b2326efa9bd5
 # ╠═a36bf3e6-81e5-4d84-8181-5418fd061b6f
 # ╠═43ee777f-8b59-402e-9ee2-1066d4127b41
 # ╠═489e5666-93b5-4198-aba1-c2eb5da5551f
-# ╟─de7bffb5-703b-486f-8eba-320cd49799c7
 # ╠═f4cda422-6bb2-4c9f-acce-500be251a9d0
 # ╠═e1074492-b12e-4c45-9e1e-c5b89563e59e
 # ╟─2224d08f-89a2-46e0-b874-9deffeb5d2f2
@@ -1559,6 +1546,8 @@ version = "1.4.1+1"
 # ╠═7b308bce-87e0-4856-8b90-e1f367442c7e
 # ╠═d0bcd5d9-7ace-4a08-be95-09ab3e818fe7
 # ╠═9cc02865-0439-442b-bb62-9f32cb9b48c2
+# ╠═7b461e72-e896-4737-9640-7c050532e010
+# ╠═89ef3cdb-66fb-4443-8dc1-a6df0a714f85
 # ╠═87771b74-eddd-4514-b129-bb7350bc7ee8
 # ╠═a54f34ab-e4a4-4f52-a394-2588b63f345d
 # ╟─00000000-0000-0000-0000-000000000001

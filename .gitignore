@@ -2,6 +2,17 @@
 build
 .vscode
 
+ad2024/*.aux
+ad2024/*.bbl
+ad2024/*.bcf
+ad2024/*.blg
+ad2024/*.log
+ad2024/*.out
+ad2024/*.pdf
+ad2024/*.synctex.gz
+ad2024/*.xml
+
+
 #clangd cache
 .cache
 
