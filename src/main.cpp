@@ -76,8 +76,8 @@ void griewank_example_event_tolerance_study() {
   opt_s.LOGGING_ENABLED = false;
 
   DAEOSolverSettings<double> settings_lowtol;
-  settings_lowtol.NEWTON_EPS = 1.0e-8;
-  settings_lowtol.EVENT_EPS = 1.0e-6;
+  settings_lowtol.NEWTON_EPS = 1.0e-10;
+  settings_lowtol.EVENT_EPS = 1.0e-8;
   settings_lowtol.y0_min = 0.0;
   settings_lowtol.y0_max = 6.0;
   settings_lowtol.SEARCH_FREQUENCY = 100;
@@ -117,7 +117,7 @@ void griewank_example_event_tolerance_study() {
                      "griewank_example_hightol_noevents");
 }
 
-void simple_example_perf_study() {
+void simple_example_perf_study(int N) {
   auto f = [](const auto t, const auto x, const auto &y, const auto &p) -> auto{
     return -(p(0) + y(0)) * x;
   };
@@ -141,8 +141,6 @@ void simple_example_perf_study() {
   BNBOptimizerSettings<double> opt_s;
   opt_s.LOGGING_ENABLED = false;
 
-  constexpr int NUM_SOLVER_RUNS = 6;
-
   /**
    * TRACK LOCAL, NEVER REOPTIMIZE
    */
@@ -150,7 +148,7 @@ void simple_example_perf_study() {
   solver_s.EVENT_DETECTION_AND_CORRECTION = true;
   solver_s.ONLY_GLOBAL_OPTIMIZATION = false;
 
-  for (int i = 0; i < NUM_SOLVER_RUNS; i++) {
+  for (int i = 0; i < N; i++) {
     double dt = pow(10.0, -i);
     solver_t solver(f, h, opt_s, solver_s);
     solver.solve_daeo(0, 1, dt, 1.0, p,
@@ -166,7 +164,7 @@ void simple_example_perf_study() {
   solver_s.EVENT_DETECTION_AND_CORRECTION = false;
   solver_s.ONLY_GLOBAL_OPTIMIZATION = false;
 
-  for (int i = 0; i < NUM_SOLVER_RUNS; i++) {
+  for (int i = 0; i < N; i++) {
     double dt = pow(10.0, -i);
     solver_t solver(f, h, opt_s, solver_s);
     solver.solve_daeo(0, 1, dt, 1.0, p,
@@ -180,7 +178,7 @@ void simple_example_perf_study() {
   solver_s.ONLY_GLOBAL_OPTIMIZATION = true;
   solver_s.EVENT_DETECTION_AND_CORRECTION = true;
 
-  for (int i = 0; i < NUM_SOLVER_RUNS; i++) {
+  for (int i = 0; i < N; i++) {
     double dt = pow(10.0, -i);
     solver_t solver(f, h, opt_s, solver_s);
     solver.solve_daeo(0, 1, dt, 1.0, p,
@@ -196,22 +194,22 @@ int main(int argc, char **argv) {
   fmt::println("double epsilon is {:.6e}",
                std::numeric_limits<double>::epsilon());
   fmt::println("*** optimizer correctness test ***");
-  auto h = [](const auto t, const auto x, const auto &y, const auto &p) -> auto{
-    return pow(p(1) - pow(y(0), 2), 2) - (x - p(2)) * sin(y(0) * p(3));
-  };
-  BNBOptimizerSettings<double> opt_s;
-  opt_s.LOGGING_ENABLED = false;
-  Eigen::Vector<double, 1> ll {-8.0};
-  Eigen::Vector<double, 1> ur {8.0};
-  BNBLocalOptimizer<decltype(h), double, suggested_solver_policies<double>, 1, 4> opt(h, ll, ur, opt_s);
-  Eigen::Vector<double, 4> p(2.0, 1.0, 0.5, pi / 2);
-  auto res = opt.find_minima_at(0.0, 1.0, p, false);
-  for (auto &y : res.minima_intervals){
-    fmt::println("{::.4e}", y);
-  }
+  // auto h = [](const auto t, const auto x, const auto &y, const auto &p) -> auto{
+  //   return pow(p(1) - pow(y(0), 2), 2) - (x - p(2)) * sin(y(0) * p(3));
+  // };
+  // BNBOptimizerSettings<double> opt_s;
+  // opt_s.LOGGING_ENABLED = false;
+  // Eigen::Vector<double, 1> ll {-8.0};
+  // Eigen::Vector<double, 1> ur {8.0};
+  // BNBLocalOptimizer<decltype(h), double, suggested_solver_policies<double>, 1, 4> opt(h, ll, ur, opt_s);
+  // Eigen::Vector<double, 4> p(2.0, 1.0, 0.5, pi / 2);
+  // auto res = opt.find_minima_at(0.0, 1.0, p, false);
+  // for (auto &y : res.minima_intervals){
+  //   fmt::println("{::.4e}", y);
+  // }
   
   fmt::println("*** simple example time ***");
-  //simple_example_perf_study();
+  simple_example_perf_study(7);
   fmt::println("*** griewank time ***");
-  // griewank_example_event_tolerance_study();
+  //griewank_example_event_tolerance_study();
 }
