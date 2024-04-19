@@ -203,6 +203,9 @@ let
 	p
 end
 
+# ╔═╡ 9080d793-6c04-4a12-acbb-a07f68b2f702
+time_step_size.(with_events)
+
 # ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
 only_global = map(joinpath(data_file_directory, "se_tracking_onlyglobal_10_minus$(i)_solver_log.tsv") for i=0:(N_RUNS-1)) do file
 	make_data(file) |> simple_ex_err_transform!
@@ -217,12 +220,12 @@ without_events = map(joinpath(data_file_directory, "se_tracking_noevents_10_minu
 end;
 
 # ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
-let n = 2
+let n = 1
 	p = scatter([-log(0.5)/3], x1_exact, label="Event", marker=:x)
 	plot!(p, 0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
-	scatter!(p, with_events[n].T[1:end-2], with_events[n].X[1:end-2], label=L"x_{ev}(t)", marker=:plus, msw=2)
-	scatter!(p, without_events[n].T[1:end-2], without_events[n].X[1:end-2], label=L"x_{noev}(t)", marker=:x)
-	title!(p, "Simple Example; Computed vs. Exact; "*L"dt=0.1")
+	scatter!(p, with_events[n].T, with_events[n].X, label=L"x_{ev}(t)", marker=:plus, msw=2)
+	scatter!(p, without_events[n].T, without_events[n].X, label=L"x_{noev}(t)", marker=:x)
+	title!(p, "Simple Example; Computed vs. Exact; "*L"dt=%$(time_step_size(with_events[n]))")
 	p
 end
 
@@ -240,11 +243,16 @@ let
 	data = map(hcat(total_runtime.(with_events), 
 					total_runtime.(without_events), 
 					total_runtime.(only_global))) do v
-		uconvert(u"s", v)
+		uconvert(u"ms", v)
 	end
 	p = scatter(time_step_size.(with_events), data, xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], ms=8, msw=[4 4 1], xflip=true, xminorticks=true, xlabelfontsize=20, ylabelfontsize=20, legendfontsize=14, gridalpha=0.75,yminorgrid=true, legend=:topleft, dpi=600)
-	savefig(p, "../ad2024/gfx/easy_cost.pdf")
 	p
+end
+
+# ╔═╡ 8172aa17-bf51-4a39-a97c-d1bcca261539
+map(hcat(total_runtime.(with_events), total_runtime.(without_events), 
+	total_runtime.(only_global))) do v
+	uconvert(u"ms", v)
 end
 
 # ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
@@ -267,7 +275,7 @@ let
 	events = filter(gw_data_lowtol) do row
 		row.EVENTID == TIME_STEP_EVENT_CORRECTED
 	end
-	#scatter!(p, events.T, events.X)
+	scatter!(p, events.T, events.X)
 	p
 end
 
@@ -282,9 +290,9 @@ count(eachrow(gw_data_lowtol)) do r
 end
 
 # ╔═╡ 87771b74-eddd-4514-b129-bb7350bc7ee8
-let
-	p = plot(gw_data_lowtol.T, gw_data_lowtol.DX ./ gw_data_lowtol.DT, label=L"\dot x", xlabel=L"t", dpi=300)
-	events = filter(gw_data_lowtol) do row
+let df = gw_data_lowtol
+	p = plot(df.T, df.DX ./ df.DT, label=L"\dot x", xlabel=L"t", dpi=300)
+	events = filter(df) do row
 		row.EVENTID == TIME_STEP_EVENT_CORRECTED
 	end
 	for evt ∈ eachrow(events)
@@ -301,6 +309,15 @@ let
 	end
 	scatter!(p, events.T, events.X)
 	p
+end
+
+# ╔═╡ 2e9360a6-7f0b-4f95-b1af-d76296511d33
+let c = 5.0, d = 5.0
+	x = 0:0.005:6.0
+	y = 0:0.005:6.0
+	fn(x, y) = (x-y)^2 + d*sin(c*y) + 4.0*(x+y)
+	data = fn.(x,y')
+	surface(x, y, data, camera=(-30, 30))
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -1539,6 +1556,8 @@ version = "1.4.1+1"
 # ╟─d07841d5-0a52-4075-94a1-02606e3feeb6
 # ╟─a6f1a87e-73c2-41c6-8e60-e483157ab4a6
 # ╠═a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
+# ╠═8172aa17-bf51-4a39-a97c-d1bcca261539
+# ╠═9080d793-6c04-4a12-acbb-a07f68b2f702
 # ╟─a2716fdb-ddb3-45c6-afbb-7a776bb51010
 # ╠═0ec705dd-58a2-48c0-a41b-b4d9736056d4
 # ╠═16ee85b1-9c79-4991-bf85-fa01811e8e71
@@ -1561,5 +1580,6 @@ version = "1.4.1+1"
 # ╠═89ef3cdb-66fb-4443-8dc1-a6df0a714f85
 # ╠═87771b74-eddd-4514-b129-bb7350bc7ee8
 # ╠═a54f34ab-e4a4-4f52-a394-2588b63f345d
+# ╠═2e9360a6-7f0b-4f95-b1af-d76296511d33
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
