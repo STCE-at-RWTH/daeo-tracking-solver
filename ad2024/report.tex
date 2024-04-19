@@ -319,11 +319,12 @@ Figure \ref{fig:easy-error-improvement} shows the order-of-convergence increase 
 		0.01   & 38.7478 ms & 33.3015 ms & 180.009 ms \\
 		0.001  & 302.965 ms & 281.083 ms & 1760.02 ms \\
 		1.0e-4 & 2595.12 ms & 2500.12 ms & 17400.6 ms \\
-		1.0e-5 & 24997.0 ms & 24707.3 ms & 17853.8 ms \\ \hline
+		1.0e-5 & 24997.0 ms & 24707.3 ms & 178538 ms \\ \hline
 	\end{tabularx}
 	\caption{Run time of the solver (ms) compared against the time step size. The cost of global optimization at every time step, even in one dimension, quickly becomes prohibitive as $\Delta t$ decreases. There is little difference between the cost of the solver with event correction enabled or disabled, since the solution to \eqref{eq:the-easy-one} only involves one event correction.}
 	\label{fig:easy-cost-comparison}
 \end{figure}
+Figure \ref{fig:easy-cost-comparison} shows the runtime costs of solving \eqref{eq:the-easy-one} in various configurations. When set to "Only Global Optimization" or "Always Optimize", the solver performs the optimization procedure (\ref{algo:bnb-ia}) in every time step and uses the results to perform event correction. The cost of this procedure scales faster than the cost of the integrator alone. When configured as "No Event Tracking", the solver skips the event location procedure.
 
 % TODO Better title.
 \subsection{A More Difficult One} The following example was designed to test the robustness of the solver in a situation where local optimizers can emerge and vanish. 
