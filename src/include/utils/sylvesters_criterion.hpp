@@ -1,12 +1,13 @@
 #ifndef _SYLVESTERS_CRITERION_HPP
 #define _SYLVESTERS_CRITERION_HPP
 
+#include <type_traits>
+
 #include "Eigen/Dense"
 #include "boost/numeric/interval.hpp"
 
 #include "eigen_interval_extensions.hpp"
-#include <Eigen3.4/src/Core/util/Constants.h>
-#include <type_traits>
+
 
 /**
  * @brief Check if argument is less than or equal to zero.
@@ -117,7 +118,8 @@ bool is_positive_definite(Eigen::Matrix<T, NDIMS, NDIMS> const &A) {
   }
   // non-square matrices cannot be positive definite
   for (int n = 0; n < A.rows(); n++) {
-    if (nonpositive(bad_determinant(A.block(0, 0, n + 1, n + 1)))) {
+    Eigen::MatrixX<T> minor = A.block(0, 0, n + 1, n + 1);
+    if (nonpositive(bad_determinant(minor))) {
       return false;
     }
   }
@@ -130,7 +132,8 @@ bool is_negative_definite(Eigen::Matrix<T, NDIMS, NDIMS> const &A) {
     return false;
   }
   for (int n = 0; n < A.rows(); n++) {
-    if (nonnegative(bad_determinant(A.block(0, 0, n + 1, n + 1)))) {
+    Eigen::MatrixX<T> minor = A.block(0, 0, n + 1, n + 1);
+    if (nonnegative(bad_determinant(minor))) {
       return false;
     }
   }

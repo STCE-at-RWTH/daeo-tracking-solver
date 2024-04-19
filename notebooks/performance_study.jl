@@ -55,7 +55,7 @@ So far, we have:
 """
 
 # ╔═╡ d13c2870-69e8-40fb-a44c-84644fb4a96f
-N_RUNS::Int = 7
+N_RUNS::Int = 6
 
 # ╔═╡ 7b47bd51-c459-49b7-9d94-2724a3a29bf9
 md"""
@@ -189,12 +189,19 @@ end
 diff(df1.T)[15:40]
 
 # ╔═╡ af8e69b5-9a27-4201-b97d-b2326efa9bd5
-map(with_events) do df
-	evt = first(filter(df) do row
-		row.EVENTID == TIME_STEP_EVENT_CORRECTED
-	end)
-	evt.T
-end .- -log(0.5)/3
+let 
+	err = map(with_events) do df
+		evt = first(filter(df) do row
+			row.EVENTID == TIME_STEP_EVENT_CORRECTED
+		end)
+		evt.T
+	end .- -log(0.5)/3
+	p = scatter(time_step_size.(with_events), abs.(err), xflip = true, xaxis=:log10, yaxis=:log10, label=false, marker=:x, markersize=8, msw=4, dpi=600, minorticks=true, xlabel=L"\Delta t", ylabel=L"|t_{e, est} - t_e|", legendfontsize=22, ylabelfontsize=22, xlabelfontsize=22)
+	plot!(p, time_step_size.(with_events), dt -> dt.^2/10, ls=:dashdot, label=L"\mathcal{O}(\Delta t^2)")
+	# plot!(p, [1, 1.0e-6], [1.0e-10, 1.0e-10], label="Event Locator Tolerance")
+	savefig(p, "../ad2024/gfx/simple_ex_event_err.pdf")
+	p
+end
 
 # ╔═╡ a2806825-6c18-4659-9021-9f1bc5648d98
 only_global = map(joinpath(data_file_directory, "se_tracking_onlyglobal_10_minus$(i)_solver_log.tsv") for i=0:(N_RUNS-1)) do file
@@ -221,9 +228,11 @@ end
 
 # ╔═╡ 43ee777f-8b59-402e-9ee2-1066d4127b41
 let
-	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:+, msw=2, legend=:topleft, label="With Event Correction", xlabel=L"\Delta t")
-	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:x, msw=2, label="Without Event Correction", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}")
-	plot!(p, [10.0^h for h=0:-1:-6], [t->0.1*t, t->0.1*t^2], label=[L"O(\Delta t)" L"O(\Delta t^2)"], ls=:dashdot)
+	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:+, ms=8, msw=4, legend=:bottomleft, label="Event-Aware", xlabel=L"\Delta t", dpi=600)
+	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, xminorgrid=true, minorticks=:true, marker=:x, ms=8, msw=4, label="Event-Ignorant", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}", xflip=true, xlabelfontsize=20, ylabelfontsize=20, legendfontsize=12)
+	plot!(p, [10.0^h for h=0:-1:(-1*(N_RUNS-1))], [t->0.1*t^2], label=L"O(\Delta t^2)", ls=:dashdot)
+	savefig(p, "../ad2024/gfx/easy_daeo_convergence.pdf")
+	p
 end
 
 # ╔═╡ a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
@@ -231,9 +240,11 @@ let
 	data = map(hcat(total_runtime.(with_events), 
 					total_runtime.(without_events), 
 					total_runtime.(only_global))) do v
-		ustrip(Float64, u"s", v)
+		uconvert(u"s", v)
 	end
-	scatter(time_step_size.(with_events), data[1:end, :], xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime (ms)", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], title="Runtime Cost of DAEO Solver", xflip=true, yminorgrid=true, legend=:topleft)
+	p = scatter(time_step_size.(with_events), data, xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], ms=8, msw=[4 4 1], xflip=true, xminorticks=true, xlabelfontsize=20, ylabelfontsize=20, legendfontsize=14, gridalpha=0.75,yminorgrid=true, legend=:topleft, dpi=600)
+	savefig(p, "../ad2024/gfx/easy_cost.pdf")
+	p
 end
 
 # ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
@@ -1518,7 +1529,7 @@ version = "1.4.1+1"
 # ╠═baa48d9b-50e3-458e-8105-568d96453209
 # ╠═848f19be-77a7-42ef-a868-c133a923c820
 # ╠═dde1ec3f-512b-4103-95d0-722802c3ed79
-# ╠═af8e69b5-9a27-4201-b97d-b2326efa9bd5
+# ╟─af8e69b5-9a27-4201-b97d-b2326efa9bd5
 # ╠═a36bf3e6-81e5-4d84-8181-5418fd061b6f
 # ╠═43ee777f-8b59-402e-9ee2-1066d4127b41
 # ╠═489e5666-93b5-4198-aba1-c2eb5da5551f

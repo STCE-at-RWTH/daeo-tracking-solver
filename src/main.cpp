@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
   // }
   
   fmt::println("*** simple example time ***");
-  simple_example_perf_study(7);
+  simple_example_perf_study(6);
   fmt::println("*** griewank time ***");
   //griewank_example_event_tolerance_study();
 }
