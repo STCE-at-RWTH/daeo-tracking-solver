@@ -11,7 +11,6 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
-#include <tuple>
 #include <vector>
 
 #include "Eigen/Dense"
@@ -140,6 +139,10 @@ public:
       if (iterations_since_search == settings.SEARCH_FREQUENCY) {
         opt_res = m_optimizer.find_minima_at(next.t, next.x, params,
                                              settings.ONLY_GLOBAL_OPTIMIZATION);
+        if (opt_res.minima_intervals.size() == 0) {
+          fmt::println("*** SCREAMING CRYING VOMITING ON THE FLOOR ***");
+          break;
+        }
         solution_state_t from_opt = solution_state_from_optimizer_results(
             next.t, next.x, opt_res, params);
         if (settings.LOGGING_ENABLED) {
@@ -160,23 +163,22 @@ public:
               "  Optimizer may have vanished, from {:d} to {:d} optimizers.",
               next.n_local_optima(), from_opt.n_local_optima());
           fmt::println("  Reordering optima to match {:::.4e}", next.y);
-          correct_optimizer_permutation(from_opt, next);
-          fmt::println("               new order is {:::.4e}", from_opt.y);
+          next = correct_optimizer_permutation(from_opt, next,
+                                               settings.EVENT_DRIFT_COEFF * dt);
+          fmt::println("               new order is {:::.4e}", next.y);
+
         } else {
           fmt::println("  Optimizer emerged.");
-          correct_optimizer_permutation(next, from_opt);
           fmt::println("  Reordered optima to match {:::.4e}", next.y);
+          from_opt = correct_optimizer_permutation(
+              next, from_opt, settings.EVENT_DRIFT_COEFF * dt);
           fmt::println("               new order is {:::.4e}", from_opt.y);
         }
 
-        if (opt_res.minima_intervals.size() == 0) {
-          fmt::println("*** SCREAMING CRYING VOMITING ON THE FLOOR ***");
-          return solution_trajectory;
-        }
         // check for event and correct any error that may have accumulated
         // from the local optimizer tracking
-        event_found =
-            (next.y_star() - from_opt.y_star()).norm() > settings.EVENT_EPS;
+        event_found = (next.y_star() - from_opt.y_star()).norm() >
+                      settings.EVENT_DETECTION_EPS;
         if (event_found)
           fmt::println("  event found by gopt");
         next = std::move(from_opt);
@@ -186,11 +188,13 @@ public:
         update_optimizer(next, params);
         event_found = next.i_star != current.i_star;
       }
+
       // correct event if enabled in settings
       // we make the (bold) assumption that during a step containing an event,
       // no new local optimizers appear, and no current optimizers vanish
       // as long as the lost/gained optimizers are _not_ the global optimizer
       // at either end of the time step, this could be relaxed.
+
       if (settings.EVENT_DETECTION_AND_CORRECTION && event_found) {
         fmt::println("  Detected global optimzer switch between (t={:.6e}, "
                      "y={::.4e}) and (t={:.6e}, y={::.4e})",
@@ -199,22 +203,25 @@ public:
                      (current.y_star() - next.y_star()).norm());
         solution_state_t computed_event =
             locate_and_integrate_to_event_bisect(current, next, params);
-        fmt::println("    Event at t={:.6e}, x={:.4e}", computed_event.t, computed_event.x);
+        fmt::println("    Event at t={:.6e}, x={:.4e}", computed_event.t,
+                     computed_event.x);
         NUMERIC_T dt_event = computed_event.t - current.t;
         if (settings.LOGGING_ENABLED) {
           dy = compute_dy(current.y, computed_event.y);
-          logger.log_event_correction(clock::now(), iter, computed_event.t, dt_event,
-                                      computed_event.x, computed_event.x - current.x, computed_event.y, dy,
-                                      computed_event.i_star);
+          logger.log_event_correction(
+              clock::now(), iter, computed_event.t, dt_event, computed_event.x,
+              computed_event.x - current.x, computed_event.y, dy,
+              computed_event.i_star);
         }
         // complete time step from event back to the grid.
         NUMERIC_T dt_grid = dt - dt_event;
         // project optimizers forward by integrating to event time
         solution_state_t at_event = integrate_daeo(current, dt_event, params);
         // update the relevant optimizers to the event
-        // i.e. current global optimizer -> computed event's former global optimizer
-        // and new global optimizer -> computed event's new global optimizer
-        // these copies should be meaningless, since the integration step is the same...
+        // i.e. current global optimizer -> computed event's former global
+        // optimizer and new global optimizer -> computed event's new global
+        // optimizer these copies should be meaningless, since the integration
+        // step is the same...
         at_event.y[current.i_star] = computed_event.y[0];
         at_event.y[next.i_star] = computed_event.y[1];
         at_event.i_star = next.i_star;
@@ -291,25 +298,46 @@ private:
   }
 
   // TODO BAD
-  void correct_optimizer_permutation(solution_state_t const &fewer_optimizers,
-                                     solution_state_t &more_optimizers) {
-    vector<size_t> permutation(fewer_optimizers.n_local_optima());
-    for (size_t i = 0; i < permutation.size(); i++) {
-      for (size_t j = 0; j < more_optimizers.n_local_optima(); j++) {
-        // we reuse event eps here since it represents "acceptable accumulated
-        // integration error"
-        if ((more_optimizers.y[j] - fewer_optimizers.y[i]).norm() <
-            settings.EVENT_EPS) {
-          permutation[i] = j;
+  solution_state_t correct_optimizer_permutation(solution_state_t const &few,
+                                                 solution_state_t const &many,
+                                                 NUMERIC_T const evt_thold) {
+    vector<size_t> perm(few.n_local_optima());
+    for (size_t i = 0; i < perm.size(); i++) {
+      for (size_t j = 0; j < many.n_local_optima(); j++) {
+        // we reuse event eps here since it represents
+        // "acceptable accumulated integration error"
+        if ((many.y[j] - few.y[i]).norm() < evt_thold) {
+          perm[i] = j;
         }
       }
     }
-    for (size_t i = 0; i < permutation.size(); i++) {
-      std::swap(more_optimizers.y[i], more_optimizers.y[permutation[i]]);
-      if (i == more_optimizers.i_star) {
-        more_optimizers.i_star = permutation[i];
+    solution_state_t res = many;
+    for (size_t i = 0; i < perm.size(); i++) {
+      res.y[i] = many.y[perm[i]];
+      if (perm[i] == many.i_star) {
+        res.i_star = i;
       }
     }
+    // if there are "leftovers" that weren't captured in the permutation vector
+    if (few.n_local_optima() != many.n_local_optima()) {
+      vector<size_t> leftovers;
+      for (size_t i = 0; i < many.n_local_optima(); i++) {
+        bool leftover = true;
+        for (size_t j = 0; (j < perm.size() && leftover); j++) {
+          leftover = leftover && (perm[j] != i);
+        }
+        if (leftover) {
+          leftovers.push_back(i);
+        }
+      }
+      for (size_t i = 0; i < leftovers.size(); i++) {
+        res.y[perm.size() + i] = many.y[leftovers[i]];
+        if (leftovers[i] == many.i_star) {
+          res.i_star = perm.size() + i;
+        }
+      }
+    }
+    return res;
   }
 
   /*
