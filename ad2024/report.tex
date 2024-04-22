@@ -327,8 +327,9 @@ Figure \ref{fig:easy-error-improvement} shows the order-of-convergence increase 
 Figure \ref{fig:easy-cost-comparison} shows the runtime costs of solving \eqref{eq:the-easy-one} in various configurations. When set to "Only Global Optimization" or "Always Optimize", the solver performs the optimization procedure (\ref{algo:bnb-ia}) in every time step and uses the results to perform event correction. The cost of this procedure scales faster than the cost of the integrator alone. When configured as "No Event Tracking", the solver skips the event location procedure.
 
 % TODO Better title.
-\subsection{A More Difficult One} The following example was designed to test the robustness of the solver in a situation where local optimizers can emerge and vanish. 
+\subsection{A More Difficult One} The following example was designed to test the robustness of the solver in a situation where local optimizers emerge and vanish. 
 \begin{equation}
+	\label{eq:complicated-example}
 	\begin{aligned}
 		x(0) &= 1\\
 		\dot x(t) &= y^\star(t)\\

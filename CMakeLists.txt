@@ -61,6 +61,13 @@ add_executable(prototype src/idea_prototypes.cpp
 target_include_directories(prototype PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(prototype PRIVATE NAG::dco_cpp fmt::fmt)
 
+add_executable(optimizer src/verify-optimizer.cpp 
+  ${objective_headers} 
+  ${bnb_solver_headers} 
+  ${daeo_solver_headers})
+target_include_directories(optimizer PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
+target_link_libraries(optimizer PRIVATE NAG::dco_cpp fmt::fmt)
+
 add_executable(main src/main.cpp ${bnb_solver_headers})
 target_include_directories(main PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(main PRIVATE NAG::dco_cpp fmt::fmt)
