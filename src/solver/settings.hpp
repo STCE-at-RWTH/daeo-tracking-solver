@@ -25,7 +25,7 @@ using suggested_solver_policies = boost::numeric::interval_lib::policies<
 template <typename NUMERIC_T> struct BNBOptimizerSettings {
   NUMERIC_T TOL_Y = 1.0e-8;
   std::size_t MAXITER = 1000;
-  std::size_t MAX_REFINE_ITER = 20;
+  std::size_t MAX_REFINE_ITER = 40;
   bool LOGGING_ENABLED = true;
 };
 
@@ -41,6 +41,7 @@ template <typename NUMERIC_T> struct DAEOSolverSettings {
 
   bool TRACK_LOCAL_OPTIMA = true;
   bool EVENT_DETECTION_AND_CORRECTION = true;
+  bool LINEARIZE_OPTIMIZER_DRIFT = true;
   bool LOGGING_ENABLED = true;
   bool ONLY_GLOBAL_OPTIMIZATION = false;
 };
