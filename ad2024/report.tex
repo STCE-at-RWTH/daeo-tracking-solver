@@ -65,11 +65,13 @@
 \usepackage{graphicx, caption, subcaption, tabularx}
 \usepackage{biblatex}
 \addbibresource{daeos.bib}
+%\bibliographystyle{siam}
 \usepackage{ltexpprt}
 \usepackage{hyperref}
 
 \newcommand{\abs}[1]{\ensuremath{\left|#1\right|}}
 \DeclareMathOperator*{\argmin}{\arg\min}
+\DeclareMathOperator{\card}{\mathrm{card}}
 \newcommand{\bbR}{\ensuremath{\mathbb{R}}}
 \newcommand{\bbI}{\ensuremath{\mathbb{I}}}
 \newcommand{\frS}{\ensuremath{\mathfrak{S}}}
@@ -91,7 +93,8 @@
 \title{\Large An Efficient Local Optimizer-Tracking Solver for Differential-Algebriac Equations with Optimization Criteria\relatedversion}
 % which affiliation should I put here?
 \author{Alexander Fleming\thanks{RWTH Aachen University.}
-\and Jens Deussen\thanks{RWTH Aachen University.}}
+\and Jens Deussen$^*$
+\and Uwe Naumann$^*$}
 
 \date{}
 
@@ -121,12 +124,46 @@ Copyright for this paper is retained by authors}}
 %\setcounter{page}{1}%Leave this line commented out.
 
 % send help
-\begin{abstract} \small\baselineskip=9pt A solver for differential-algebraic equations with embedded optimization criteria (DAEOs) was developed. The new solver relies on the reduction of a DAEO to a sequence of differential inclusions separated by "jump events". Between jump events, the solver relies solely on an integrator, and it explicitly treats jump events when they occur. This preserves the order of convergence of the integrator component without sacrificing performance to perform global optimization at (nearly) every time step.
+\begin{abstract} \small\baselineskip=9pt 
+	A sequential solver for differential-algebraic equations with embedded optimization criteria (DAEOs) was developed to take advantage of the theoretical work done by Deussen et al. in \cite{deussenNumericalSimulationDifferentialalgebraic2023}. Solvers of this type separate the optimization problem from the differential equation and solve each individually. The new solver relies on the reduction of a DAEO to a sequence of differential inclusions separated by "jump events". These jump events occur when the global solution to the optimization problem jumps to a new value. Without explicit treatment, these events will reduce the order of convergence of the integration step by one \cite{mannshardtOnestepMethodsAny1978}.
+	
+	The solver implements a "local optimizer tracking" procedure to detect and correct these jump events. Local optimizer tracking is much less expensive than running a global optimizer at every time step. 
+	% "solely on an integrator" is weak
+	This preserves the order of convergence of the integrator component without sacrificing performance to perform global optimization at every time step. The newly developed solver produces correct solutions to DAEOs and runs much faster than sequential DAEO solvers that rely only on global optimization.
 \end{abstract}
 
+\section{Introduction}
+Differential-algebraic equations with embedded optimization criteria (DAEO) describe dynamic systems where at least one of the algebraic variables is determined by the solution to an optimization problem. Phase-separation problems subject to thermodynamic equilibrium constraints (for example, vapor-liquid separation) are common examples of DAEOs, where the equilibrium between phases occurs at the minimum of the Gibbs free energy \cite{bakerGibbsEnergyAnalysis1982}.A few specific industrial applications of these models are distillation processes, flash drums, heat exchangers, and bio-chemical reaction processes \cite{raghunathanMPECFormulationDynamic2004, plochMultiscaleDynamicModeling2019}. In this specific case, the optimality constraint on the Gibbs free energy leads to a system of differential-algebraic equations with an embedded non-linear programming problem, which is equivalent to a DAEO \cite{bieglerNonlinearProgrammingConcepts2010}.
+% maybe go grab the U-V flash drum example? or something else from the references.
 
-\section{Problem Setting.}
-A differential-algebraic equations with embedded optimization criteria (DAEO) is written as an initial-value problem like so:
+Solving these types of problems frequently begins by replacing the embedded optimization problem with the Karush-Kuhn-Tucker (KKT) conditions \cite{bieglerNonlinearProgrammingConcepts2010}. The KKT conditions state that the solution to the following problem
+\begin{equation*}
+	\begin{gathered}
+		\mathrm{minimize}\,f(x) \\
+		\mathrm{subject\ to} \\
+		g_i(x) = 0\\
+		h_j(x) \leq 0
+	\end{gathered}
+\end{equation*}
+is equivalent to finding all saddle points of
+\begin{equation}
+	\label{eq:kkt-lagrangian}
+	\mathcal{L}(x, \mu, \lambda) = f(x) + \mu_jh_j(x) + \lambda_ig_i(x)
+\end{equation}
+The KKT conditions guarantee first-order local optimality, but cannot provide information about global optimality. A good initial guess for solving \eqref{eq:kkt-lagrangian} can, however, arrive at the global optimum. Therefore, using this method can only provide an exact solution when the embedded optimization problem is a convex non-linear programming problem, or if the initially computed global minimizer remains the global minimizer. If this is not the case, there will be multiple feasible solutions to the problem rewritten using the KKT conditions, and the rewritten DAEO will not be smooth\cite{plochDirectSingleShooting2022}. 
+
+Methods for solving the reformulated problem are divided into two classes: sequential and simultaneous. Simultaneous methods solve the reformulated problem by combining the entire set of equations and variables into one nonlinear programming problem, which can be solved using suitable tools, such as IPOPT \cite{bieglerNonlinearProgrammingConcepts2010, wachterImplementationInteriorpointFilter2006}. Sequential methods separate the differential-algebraic equation from the optimization problem, and require some way to solve both a DAE and an optimization problem. Sequential approaches have been used to solve DAEOs that describe U-V flash processes in \cite{ritschelAlgorithmGradientbasedDynamic2018}, and flux-balance problems in \cite{plochDirectSingleShooting2022}. However, these single-shooting algorithms for solving non-smooth DAEs fail to account for the fact that the KKT conditions do not guarantee global optimality.
+
+This work develops a sequential solver for DAEOs and builds upon the theoretical work done in \cite{deussenNumericalSimulationDifferentialalgebraic2023}. Rather than applying the KKT conditions and successively identifying the optimizer, the solver finds \textit{all} local optimizers in a given search domain via a branch-and-bound algorithm \cite{rallGlobalOptimizationUsing1985}.
+
+Given certain assumed properties of the DAEO, the movement of these local optimizers can be tracked through a time step by appending the first-order optimality conditions (gradient is zero) to the equations solved by the integrator component of the solver. Solving these equations is significantly less expensive than running a global optimizer at every time step, and it is possible to correct for possible "jump events", which occur when the identity of the global optimizer changes \textit{during} a time step. If left unaccounted for, these jump events will reduce the order of convergence of the solution to the DAE by 1 \cite{deussenNumericalSimulationDifferentialalgebraic2023, mannshardtOnestepMethodsAny1978}.
+
+The solver developed in this work performs both local optimizer tracking and jump event correction. The numerical experiments performed in Section \ref{section:numerical-experiments} demonstrate the correctness of local optimizer tracking and the performance improvement over a sequential DAEO solver without local optimizer tracking.
+% can't back this up, not without a comparison to an NLP solver.
+% These processes are much more computationally efficient than solving a (potentially) large non-linear programming problem at each time step.
+
+\section{Problem Description.}
+A simple DAEO is written as an initial-value problem like so:
 \begin{equation} \label{eq:daeo-ivp}
 \begin{aligned}
 	x(t_0) &= x_0\\
@@ -134,29 +171,35 @@ A differential-algebraic equations with embedded optimization criteria (DAEO) is
 	\left\{y^k\right\}(t, x) &= \argmin_{y}h(x(t), y)
 \end{aligned}
 \end{equation}
-where $f:\bbR^{n_x}\times\bbR^{n_y}$ describes the differential behavior of the system, and $h:\bbR^{n_x}\times\bbR^{n_y}$ is an objective function to be minimized. At any given time $t>t_0$, the set of $k$ minimizers of $h$ is denoted by $\left\{y^k\right\}$. The notation $\dot{x}$ denotes $\partial x/\partial t$, $\partial_x f$ denotes $\partial f/\partial x$, and $d_x f$ denotes $df/dx$, in the cases where the difference between the partial and total derivatives is relevant. Second derivatives are written similarly, with $\ddot{x}$ for $\partial^2_t x$ and $\partial^2_{yx} f$ for $\partial f/\partial x\partial y$.
+where 
+\begin{itemize}
+	\item $f:\bbR^{n_x}\times\bbR^{n_y}$ describes the differential behavior of the system
+	\item $h:\bbR^{n_x}\times\bbR^{n_y}$ is an objective function to be minimized
+	\item $\left\{y^k\right\}$ denotes the set of minimizers of $h(x, y)$ at time $t>t_0$
+\end{itemize}
+The notation $\dot{x}$ denotes $\partial x/\partial t$, $\partial_x f$ denotes $\partial f/\partial x$, and $d_x f$ denotes $df/dx$, in the cases where the difference between the partial and total derivatives is relevant. Second derivatives are written similarly, with $\ddot{x}$ for $\partial^2_t x$ and $\partial^2_{yx} f$ for $\partial f/\partial x\partial y$.
 
 At any time $t \geq t_0$, there will be a some $y^\star(t)\in\left\{y_k(t)\right\}$ such that
 \begin{equation}
 	h(x(t), y^\star(t))\leq h(x(t),y^i(t))\, \forall\,y^i(t)\in\left\{y^k(t)\right\} 
 \end{equation}
 % TODO get someone to check the terminology here!
-This implies that the initial value problem posed in \eqref{eq:daeo-ivp} can be divided into a sequence of initial-value problems if $y^\star(t)$ has a sufficiently well-behaved dependency on $x$ and $t$. 
+This implies that the initial value problem posed in \eqref{eq:daeo-ivp} can be divided into a sequence of initial-value problems if $y^\star(t)$ has a sufficiently well-behaved dependency on $x$ and $t$.
 
 \begin{assumption}
 	\label{assume:events-exist}
-	There are never more than two global optimizers at any time $t$, and there is only a finite set of events $t_0 < t_{e_1} < t_{e_2} < \ldots$ where there are exactly two global optimizers, or:
+	There is only a finite set of events $t_0 < t_{e_1} < t_{e_2} < \ldots$ where more than one possible global optimizer exists, or:
 	\begin{equation*}
-		\Lambda\left(\argmin_{y\in\left\{y^k\right\}}h(x(t_{e_j}), y)\right) = 2
+		\card\left(\argmin_{y\in\left\{y^k\right\}}h(x(t_{e_j}), y)\right) > 1
 	\end{equation*}
 \end{assumption}
-Given 
+
 \begin{equation*}
-	\argmin_{y\in\left\{y^k\right\}} h(x(t), y) = \left\{y^1, y^2\right\}
+	\argmin_{y\in\left\{y^k\right\}} h(x(t_{e_j}), y) = \left\{y^1, y^2\right\}
 \end{equation*}
-this assumption limits the behavior at each $t_{e_j}$ to something computationally feasible: 
+this assumption limits the behavior at each $t_{e_j}$ to the following two possibilities:
 \begin{enumerate}
-	\item Two local optimizers $y^1$ and $y^2$ are both global optimizers \textit{only} at $t_{e_j}$:
+	\item Some number of local optimizers $y$ are each global optimizers \textit{only} at $t_{e_j}$, and $y^1$ is the global optimizer both before and after $t_{e_j}$:
 	\begin{equation*}
 		\begin{aligned}
 			\lim_{t\to t_{e_j}^+} \argmin_{y} h(x(t), y) &= y^1\\
@@ -171,18 +214,49 @@ this assumption limits the behavior at each $t_{e_j}$ to something computational
 		\end{aligned}
 	\end{equation*}
 \end{enumerate}
-% TODO maybe it's relevant to explain that integrating f(x, y2) from t_e to t_e results in no difference in x
-Only the second case is relevant for the correct solution of DAEOs, since the duration of the "collision" between $y_1$ and $y_2$ is zero. Between each $t_{e_j}$, the DAEO \eqref{eq:daeo-ivp} can be treated as an IVP, with the extra constraint that $\partial_{y} h(x(t), y^\star(t)) = 0$.
+In both cases, integrating the differential part of \eqref{eq:daeo-ivp} from $t_1 < t_{e_1}$ to $t_2 > t_{e_1}$ yields
+\begin{equation}
+	\begin{aligned}
+		x(t_2) &= x(t_1) + \int_{t_1}^{t_2}f(x, y^\star)\,dt\\
+		&=\begin{split}
+			x(t_1) + \int_{t_1}^{t_{e_1}}f(x, y^1)\,dt\,+\\
+			\int_{t_{e_1}}^{t_{e_1}}f(x, y^\star)\,dt +\int_{t_{e_1}}^{t_2}f(x, y^2)\,dt
+		\end{split}\\
+		&=x(t_1) + \int_{t_1}^{t_{e_1}}f(x, y^1)\,dt + \int_{t_{e_1}}^{t_2}f(x, y^2)\,dt
+	\end{aligned}
+\end{equation}
+Therefore, the choice of global optimizer $y^\star$ exactly at $t_{e_j}$ is inconsequential. This renders the first case trivial, since there is no change in the identity of $y^\star$ after the event.
 
-\section{Solution Technique.}
+The second case, however, is relevant for the correct solution of DAEOs. Between each $t_{e_j}$, the DAEO \eqref{eq:daeo-ivp} can be treated as an IVP, with the extra constraint that $\partial_{y} h(x(t), y^\star(t)) = 0$ \cite{deussenSeparation}.
+
+\begin{assumption} 
+	\label{assume:events-transversal}
+	(Events Are Transversal)
+	The identity of the global optimizer $y^\star$ at the time step $t^{n+1}$ \textit{after} an event is always different from the identity of the global optimizer $y^\star$ at the time step $t^n$ \textit{before} an event. 
+\end{assumption}
+
+This transversality assumption eliminates the case that the global optimizer $y^\star$ may switch to a new value and return \textit{inside} a time step. This behavior would occur on a scale that is too small for the solver to capture, and if it is relevant to the solution, simply adjusting the time step size to restore transversality would generate a correct solution.
+
+\begin{assumption}
+	\label{assume:global-does-not-emerge}
+	A new global optimizer of $h(x, y)$ does not emerge during a time step. Events can only occur between already-existing local optimizers.
+\end{assumption}
+
+This assumption is critical for the local optimizer tracking strategy. Without it, the global optimizer would necessarily run every time step to mitigate the possibility of a newly-emerged global optimizer.
+
+% I would like to comment on the reality / feasibility of this assumption. Maybe comment on phase transition? My metallurgy / chemistry knowledge is limited and I'm not sure where to cite. 
+
+\subsection{Solution Process.}
 To solve this sequence of IVPs generated by the jump events, the solver must 
 \begin{enumerate}
 	\item Generate the set $\left\{y^k(t)\right\}$ at $t=t_0$ and at user-specified times $t>t_0$ to correct for any integration error that may accumulate.
 	\item Detect when the identity of $y^\star$ changes and correct the time step in which it happens (the second case, above).
-	\item Solve the sequence of IVPs after $t_0$ without using the global optimizer.
+	\item Solve the sequence of IVPs generated by jump events for $t>t_0$. The global optimizer is not necessary, unless optimizers of $h(x, y)$ can vanish or emerge as $t$ increases.
 \end{enumerate}
 
-\subsection{Global Optimization with Interval Arithmetic.}
+\section{Global Optimization with Interval Arithmetic.}
+A sequential DAEO solver must first locate the global optimizer $y^\star$ of $h(x, y)$. This can be accomplished using a branch-and-bound algorithm to locate each point $y^k$ inside an initial search domain that satisfies certain optimality conditions.
+
 \begin{assumption} 
 	\label{assume:twice-lipschitz}
 	Both $f$ and $h$ are twice Lipschitz continuous with respect to $(x(t), y(t))$.
@@ -195,22 +269,28 @@ Optimality conditions for $h(x(t), y)$ follow from \ref{assume:twice-lipschitz}
 		0 &\prec\partial^2_{y}h(x, y)
 	\end{aligned}
 \end{equation}
-The global optimizer must find all points $y_i$ that satisfy these optimality conditions. Using a suitable algorithmic differentiation (AD) tool and an interval arithmetic library allows for the comparatively inexpensive verification of the optimality conditions. An interval $[y] \in \bbI\bbR^{n_y} = \left[\ubar y_i, \bar y_i\right]$ bounds all possible values for each $y_i\in\bbR$. 
+Using a suitable algorithmic differentiation (AD) tool and an interval arithmetic library allows for the comparatively inexpensive verification of the optimality conditions\cite{rallGlobalOptimizationUsing1985}. 
 
+An interval $[y] \in \bbI\bbR^{n_y} = \left[\ubar y_i, \bar y_i\right]$ bounds all possible values for each $y_i\in\bbR$. 
 \begin{Definition}
 	\label{def:interval-arith}
 	\textbf{(Fundamental Theorem of Interval Arithmetic)}
 	
 	An interval evaluation of a function $\left[\ubar{y},\bar{y}\right] = f(\left[\ubar x, \bar x\right])$ must yield an interval that contains all pointwise evaluations $f(x)\,\forall\,x\in\left[\ubar x, \bar x\right]$.
 \end{Definition}
-A correct implementation of interval arithmetic need not provide the tightest possible result $\left[\ubar y, \bar y\right]$\cite{hickeyIntervalArithmeticPrinciples2001}. However, the result $[\ubar y, \bar y] = f(\left[\ubar x, \bar x\right])$ \textit{must} contain all possible results of the interval evaluation. If a computed "interval gradient" does not contain zero, none of the values in the input interval $\left[\ubar x, \bar x\right]$ could be a local optimizer. Similarly, if the "interval Hessian" does not satisfy Sylvester's criterion, the input interval cannot contain a local minimizer.
+The condition in \ref{def:interval-arith} means that a correct implementation of interval arithmetic need not provide the smallest possible result $\left[\ubar y, \bar y\right]$\cite{hickeyIntervalArithmeticPrinciples2001}. However, the result $[\ubar y, \bar y] = f(\left[\ubar x, \bar x\right])$ \textit{must} contain all possible results of the interval evaluation. One such implementation is the Boost Interval library\cite{melquiondBoostIntervalLibrary2022}.
+
+If the gradient $\partial_{y_i}h(x, y)$ must be in an interval $\left[\partial_{y_i}h(x, \left[y\right])\right]$, and that interval does not contain $0$, then the input interval $\left[y\right]$ contains no points that satisfy the optimality conditions \eqref{eq:optimality-conditions}. 
+
+Similarly, if the Hessian matrix $\partial^w_{y_iy_j}h(x,y)$ must be in an interval $\left[\partial^2_{y_iy_j}h(x, \left[y\right])\right]$, and that interval only contains positive definite matrices, then $h(x, y)$ is concave up over the entire input interval $\left[y\right]$. The positive definite-ness of interval matrices can be evaluated by testing if the interval eigenvalues are all positive, or by Sylvester's criterion, a condition on the determinants of successively larger submatrices of the original.
+% TODO cite Sylvester's criterion?
 \begin{Definition}
 	\label{def:sylvester}
 	\textbf{(Sylvester's Criterion)}
 	
 	A matrix $A\in\bbR^{n\times n}$ is positive-definite if and only if each of the leading principal minors (the upper left blocks of increasing size) of $A$ have positive determinants.
 \end{Definition}
-Unfortunately, computing the exact bounds of the interval determinant is an NP-hard problem \cite{horacekDeterminantsIntervalMatrices2018}, but there are methods to determine the sign of the interval determinant that are much faster than computing the interval determinant directly.
+Unfortunately, computing the exact bounds of the interval determinant is an NP-hard problem \cite{horacekDeterminantsIntervalMatrices2018}, which limits this solver to smaller problems ($n_y\approx10$). The computation of interval gradients and Hessian matrices with automatic differentiation is discussed in Section \ref{sec:interval-ad}.
 
 \begin{algorithm}
 	\label{algo:bnb-ia}
@@ -219,32 +299,47 @@ Unfortunately, computing the exact bounds of the interval determinant is an NP-h
 	Process the list of intervals to search for optimizers $\frS = \left\{[y]\right\}$ according to the following rules:
 	\begin{enumerate} 
 		\item Take the first item $[y]$ from $\frS$.
-		\item Evaluate $[\ubar h, \bar h] = h(x, [y])$. If $\bar h$ is less than the current upper bound for $h$, update it. If $\ubar h$ is larger than the current upper bound for $h$, $[y]$ may be discarded.
-		\item Evaluate the interval gradient $\partial_y h(x, [y])$. If the result interval does not contain $0$, $[y]$ contains no optimizers and can be discarded.
-		\item Test the interval Hessian $\partial^2_y h(x, [y])$ for positive definite-ness.
+		\item \textbf{Bound:} Evaluate $[\ubar h, \bar h] = h(x, [y])$. If $\bar h$ is less than the current upper bound for $h$, update it. If $\ubar h$ is larger than the current upper bound for $h$, $[y]$ may be discarded if the desired behavior is to only find the global optimizer.
+		\item \textbf{Gradient Test:} Evaluate the interval gradient $\partial_y h(x, [y])$. If the result interval does not contain $0$, $[y]$ contains no optimizers and can be discarded.
+		\item \textbf{Hessian Test:} Test the interval Hessian $\partial^2_y h(x, [y])$ for positive definite-ness.
 		\begin{enumerate}
 			\item If the interval Hessian is negative definite, $h$ is concave down over the interval $[y]$, and $[y]$ can be discarded.
 			\item If the interval Hessian is positive definite, $h$ is concave up over the interval $[y]$, and $[y]$ can be narrowed by any appropriate local optimization method.
-			\item If the interval hessian is neither positive- nor negative definite, bisect the interval $[y]$ in each of its dimensions and append the results to $\frS$
 		\end{enumerate}
+		\item \textbf{Branch:} If the interval hessian is neither positive- nor negative definite, bisect the interval $[y]$ in each of its dimensions and append the results to $\frS$. This step can add at most $2^{n_y}$ new items to $\frS$.
 		\item Repeat for all remaining items in $\frS$.
 	\end{enumerate}
 \end{algorithm}
-This branch-and-bound algorithm locates all intervals $\left\{[y]^k\right\}$ that contain minimizers of $h(x, y)$.
+This branch-and-bound algorithm locates all intervals $\left\{[y]^k\right\}$ that contain minimizers of $h(x, y)$ \cite{rallGlobalOptimizationUsing1985, deussenGlobalSearchLocal2020}. The user is able to configure a termination criterion for the interval-narrowing and interval-splitting steps by setting the minimum width of an interval that will be split or narrowed. This directly controls the error in the optimizer's output. The solutions in \ref{fig:easy-example-solution} and \ref{fig:complicated-example-solution} were computed with a termination threshold of $\mathrm{width}\left[\ubar y^k, \bar y^k\right] \leq 10^{-8}$.
 
-\subsection{Time Stepping}
-The trapezoidal rule (a Runge-Kutta scheme of order 2) steps from time step $t^n$ to $t^{n+1}$ via the implicit formulation
+\subsection{Automatic Differentiation of Interval Evaluations.} 
+\label{sec:interval-ad}
+
+% TODO reference code online
+"Interval gradients" of a function are computed by substituting appropriately-typed intervals directly into the gradient driver for the function \cite{griewankEvaluatingDerivativesPrinciples2008, rallGlobalOptimizationUsing1985}.
+
+Conveniently, Boost Interval also provides suitable operator- and arithmetic function overloads, which means that using intervals with an operator overloading-based AD tool works with minimal effort. 
+
+\section{Time Stepping}
+The trapezoidal rule (a Runge-Kutta scheme of order 2 \cite{butcherNumericalMethodsOrdinary2008}) steps from time step $t^n$ to $t^{n+1}$ via the implicit formulation
+
+% TODO split to two lines...
 \begin{equation}
 	\label{eq:trap-rule}
-	x(t^{n+1}) = x(t^n) + \frac{\Delta t}{2}\left(\begin{aligned}&f\left(x(t^n), y^\star(t^n)\right)\, + \\ &f\left(x(t^{n+1}), y^\star(t^{n+1})\right) \end{aligned}\right)
+	x(t^{n+1}) = \begin{aligned}x(t^n) &+ \frac{\Delta t}{2}(f(x(t^n), y^\star(t^n))\\&+\, f(x(t^{n+1}), y^\star(t^{n+1})))\end{aligned}
 \end{equation}
-If the time step $\Delta t$ is small enough, the integration step for $x$ can be augmented with $n_y * \Lambda\left(\left\{y^k\right\}\right)$ additional equations that force the values $\left\{y^k\right\}$ at time $t^{n+1}$ to satisfy the first-order optimality conditions:
+Using this integrator requires estimates for $y^\star(t^{n})$ and $y^\star(t^{n+1})$.
+
+\subsection{Local Optimizer Tracking}
+If the time step $\Delta t$ is small enough, the integration step for $x$ can be augmented with $n_y * \card\left(\left\{y^k\right\}\right)$ additional equations that force the values $\left\{y^k\right\}$ at time $t^{n+1}$ to satisfy the first-order optimality conditions:
 \begin{equation}
 	\label{eq:first-order-opt-at-tn}
 	\partial_{y_i}h\left(x(t^{n+1}), y^k_i(t^{n+1})\right) = 0
 \end{equation}
 	
 \eqref{eq:trap-rule} and \eqref{eq:first-order-opt-at-tn} can be combined into one system of equations and solved numerically. However, without an explicit treatment of time steps that bracket a jump event, the order of convergence of \textit{any} chosen integrator will be reduced by 1 \cite{mannshardtOnestepMethodsAny1978}.
+
+Local optimizer tracking allows the solver to avoid expensive calls to global optimization while maintaining an estimate of each local optimizer. The error in this estimation is bounded by $\dot y^k(t)$, and it is corrected by periodically re-running the global optimizer. Re-running the global optimizer is also necessary to correctly identify newly-emerged or vanishing optimizers (see \eqref{eq:complicated-example}).  
 
 \subsection{Jump Event Detection}
 
@@ -262,9 +357,10 @@ In order to locate an event, the solver must check the identity of the current g
 
 
 \section{Numerical Experiments}
-The basic capabilities and peculiarities of the solver were tested using a simple example with a known analytic solution, and a more complex example designed to test the robustness of the event correction procedure. Linear algebra operations were provided by Eigen\cite{guennebaudEigenV32010}, and automatic differentiation capability was provided by \texttt{dco/c++}\cite{leppkesDerivativeCodeOverloading2016}. For these experiments the solver (written in C++), was compiled using "Release" optimization flags.
+\label{section:numerical-experiments}
+The basic capabilities and peculiarities of the solver were tested using a simple example with a known analytic solution, and a more complex example designed to test the robustness of the event correction procedure. 
 
-% TODO better name
+Linear algebra operations were provided by Eigen\cite{guennebaudEigenV32010}, and automatic differentiation capability was provided by \texttt{dco/c++}\cite{leppkesDerivativeCodeOverloading2016}. For these experiments the solver (written in C++), was compiled using \texttt{-O3 -DNDEBUG} flags.
 \subsection{Performance Testing}
 An analytically-solvable DAEO is
 \begin{equation}
@@ -284,50 +380,69 @@ Here, the function $h(x, y)$ admits two local optimizers $\left\{-1, 1\right\}$,
 	\end{cases}
 \end{equation*}
 The solution for the DAEO is then
-\begin{equation*}
+\begin{equation}
+	\label{eq:easy-daeo-solution}
 	x(t) = \begin{cases}
-		\exp-3t & t < -\frac{1}{3}\ln\frac{1}{2} \\
+		\exp\left[-3t\right] & t < -\frac{1}{3}\ln\frac{1}{2} \\
 		\exp\left[-t + \frac{2}{3}\ln\frac{1}{2}\right] & t \geq -\frac{1}{3}\ln\frac{1}{2}
 	\end{cases}
+\end{equation}
+The solver should detect exactly one event at $t_{e_1} = -\frac{1}{3}\ln\frac{1}{2}$.
+%TODO this is bad. this sucks. I hate it.
+Since there are no constraints on either $x$ or $y$ in \eqref{eq:the-easy-one}, the KKT conditions for this example reduce to
+\begin{equation*}
+	\mathrm{minimize\ in\ } y:\,h\left(x(t), y\right)
 \end{equation*}
-The solver should detect exactly one event at $t_{e_1} = -\frac{1}{3}\ln\frac{1}{2}$. 
+
+A suitable local optimization algorithm will converge to one of the local optimizers. This result may be the global optimizer, but there is no way to know when the jump event occurs without a global optimizer. However, the branch-and-bound algorithm described in Algorithm \ref{algo:bnb-ia} finds both local optimizers.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.45\textwidth]{gfx/easy_daeo_solution.pdf}
+	\caption{The solution to \eqref{eq:the-easy-one} as computed by the solver both with and without event correction enabled. $x_{exact}(t)$ plots \eqref{eq:easy-daeo-solution}, and the vertical line is located at $t_{e_1}$. The data points $x_{ev}(t)$ and $x_{noev}(t)$ show the computed trajectory for $x(t)$ with and without events, respectively.  The event detection procedure generates an extra data point at $t={t_e}$ that lies on the boundary between two of the component IVPs in \eqref{eq:the-easy-one}. $\Delta t$ was set to $0.25$ for this computation.}
+	\label{fig:easy-example-solution}
+\end{figure}
+Figure \ref{fig:easy-example-solution} shows the difference between the solver results with the event detection and correction procedure enabled and without. The detected event adds an extra point into the computed solution, which functions as the initial value for a second DAE that exists from $t_{e} \leq t \leq t_{end}$. By correctly identifying the dynamics of $x(t)$ inside of the first time step from $t_0$ to $t_1$, the second-order convergence of the trapezoidal rule can be recovered.
+
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=0.45\textwidth]{gfx/simple_ex_event_err.pdf}
-	\caption{Event locator error $\abs{t_{e, calculated} - t_{e, exact}}$. The event locator error converges with order $\Delta t^2$ to the user-set tolerance \texttt{NEWTONTOL}, which is used for every root-finding routine in the solver.}
-	\label{fig:easy-event-location}u
+	\caption{Event locator error $\abs{t_{e, calculated} - t_{e, exact}}$. The event locator error converges with order $\Delta t^2$ to a user-set tolerance, which is used for every root-finding routine in the solver.}
+	\label{fig:easy-event-location}
 \end{figure}
+The event location procedure converges quickly enough to satisfy the consistency requirements given in \cite{mannshardtOnestepMethodsAny1978}. Consequently, using the event detection and correction procedure will restore the trapezoidal rule to order 2. A user-specified parameter controls the termination criterion for the event-location procedure, which places a strict limit on its accuracy.
 
-The event location procedure converges quickly enough to satisfy the consistency requirements given in \cite{mannshardtOnestepMethodsAny1978}. Consequently, using the event detection and correction procedure will restore the trapezoidal rule to order 2. As implemented, the user-specified parameter \texttt{NEWTON\_TOL} controls the termination criterion for the event-location procedure, which places a strict limit on its accuracy.
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=0.45\textwidth]{gfx/easy_daeo_convergence.pdf}
-	\caption{Convergence rates of the solver with (marked in blue, converges with order 2) and without (marked in orange, converges with order 1). The event detection procedure generates an extra data point at $t={t_e}$ that lies on the boundary between two of the component IVPs in \eqref{eq:the-easy-one}}.
+	\caption{Convergence rates of the solver with (marked in blue, converges with order 2) and without (marked in orange, converges with order 1).}
 	\label{fig:easy-error-improvement}
 \end{figure}
+Figure \ref{fig:easy-error-improvement} shows the order-of-convergence increase due to the event location and simulation procedure. The price of recovering the second-order convergence is the addition of the event-detection procedure. The user may also trigger a search of the optimizer space at specific intervals, which incurs significant computational cost, especially if $n_y > 1$. However, local-optimizer tracking minimizes the number of times the global optimizer needs to be run. If it is known that the total number of optimizers $\left\{y^k\right\}$ is constant, the global optimizer only needs to be run as the beginning, which is the case for \eqref{eq:the-easy-one}.
 
-Figure \ref{fig:easy-error-improvement} shows the order-of-convergence increase due to the event location and simulation procedure. The price of recovering the second-order convergence is the addition of . The user may also trigger a re-search of the optimizer space at specific intervals, which incurs significant computational cost, especially if $n_y > 1$.
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=0.5\textwidth]{gfx/easy_cost.pdf}
-	\begin{tabularx}{0.5\textwidth}{| >{\centering\arraybackslash}X | >{\centering\arraybackslash}X | >{\centering\arraybackslash}X | >{\centering\arraybackslash}X |}
+	\begin{tabularx}{0.5\textwidth}{| >{\centering\arraybackslash}X | >{\raggedleft\arraybackslash}X | >{\raggedleft\arraybackslash}X |}
 		\hline
-		$\Delta t$ & Event Tracking & No Event Tracking & Always Optimize \\
+		$\Delta t$ & Event Tracking & Always Optimize \\
 		\hline
-		1.0    & 14.8061 ms & 3.10413 ms & 3.63199 ms \\
-		0.1    & 13.2307 ms & 4.55644 ms & 28.5151 ms \\
-		0.01   & 38.7478 ms & 33.3015 ms & 180.009 ms \\
-		0.001  & 302.965 ms & 281.083 ms & 1760.02 ms \\
-		1.0e-4 & 2595.12 ms & 2500.12 ms & 17400.6 ms \\
-		1.0e-5 & 24997.0 ms & 24707.3 ms & 178538 ms \\ \hline
+		0.25   & 15 ms & 23 ms \\
+		2.5e-2 & 20 ms & 83 ms \\
+		2.5e-3 & 126 ms & 793 ms \\
+		2.5e-4 & 1,051 ms & 7,593 ms \\
+		2.5e-5 & 10,444 ms & 74,874 ms \\
+		2.5e-6 & 109,945 ms & 744,696 ms \\\hline
 	\end{tabularx}
 	\caption{Run time of the solver (ms) compared against the time step size. The cost of global optimization at every time step, even in one dimension, quickly becomes prohibitive as $\Delta t$ decreases. There is little difference between the cost of the solver with event correction enabled or disabled, since the solution to \eqref{eq:the-easy-one} only involves one event correction.}
 	\label{fig:easy-cost-comparison}
 \end{figure}
-Figure \ref{fig:easy-cost-comparison} shows the runtime costs of solving \eqref{eq:the-easy-one} in various configurations. When set to "Only Global Optimization" or "Always Optimize", the solver performs the optimization procedure (\ref{algo:bnb-ia}) in every time step and uses the results to perform event correction. The cost of this procedure scales faster than the cost of the integrator alone. When configured as "No Event Tracking", the solver skips the event location procedure.
+Figure \ref{fig:easy-cost-comparison} shows the runtime costs of solving \eqref{eq:the-easy-one} in various configurations. When set to "Only Global Optimization" or "Always Optimize", the solver performs the optimization procedure (\ref{algo:bnb-ia}) in every time step and uses the results to perform event correction. The cost of this procedure scales significantly faster than the cost of the integrator alone. 
+% explain why brancing works the way it does somewhere
+In fact, the cost of the branch-and-bound procedure scales as $2^{n_y}$ (each "branch" step generates $2^{n_y}$ new intervals to search), while solving the local optimizer only scales fast as the cost of solving a linear system of $n_x + n_y\cdot\card\left(\left\{y^k\right\}\right)$ equations. When configured as "No Event Detection", the solver skips the event location procedure, which only saves the cost of one root-finding operation and one integration step.
 
 % TODO Better title.
-\subsection{A More Difficult One} The following example was designed to test the robustness of the solver in a situation where local optimizers emerge and vanish. 
+\subsection{Robustness Testing} The following example was designed to test the robustness of the solver in a situation where local optimizers emerge and vanish. 
 \begin{equation}
 	\label{eq:complicated-example}
 	\begin{aligned}
@@ -337,6 +452,54 @@ Figure \ref{fig:easy-cost-comparison} shows the runtime costs of solving \eqref{
 		h(x, y) &= (x-y)^2 + \sin 5y
 	\end{aligned}
 \end{equation}
+This particular objective function $h(x, y)$ has a set of local optimizers $\left\{y^k\right\}$ with a size that depends on the value of $x(t)$. 
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.45\textwidth]{gfx/hard_daeo_solution.pdf}
+	\includegraphics[width=0.45\textwidth]{gfx/hard_daeo_solution_xdot.pdf}
+	
+	\caption{Results of running the solver on \eqref{eq:complicated-example}. The solver erroneously identifies some events, but corrects on the next time step by returning the correct value. }
+	\label{fig:complicated-example-solution}
+\end{figure}
+
+The user is able to select the Lipshitz constants on $h$ that were derived in \cite{deussenNumericalSimulationDifferentialalgebraic2023}. Correctly setting these coefficients requires some manual tuning, as incorrect values can lead to solutions that are subtly unreasonable (event detection in the wrong time step) or that are obviously incorrect (diverge to $\pm\infty$). Solutions to \eqref{eq:complicated-example} were computed with a minimum jump event size of $1.0\times10^{-4}$. Relaxing this setting any further generates nonsense results for $x(t)$, and reducing it causes the solver to erroneously detect events.
+
+\subsection{PT Flash Reactor}
+
+% TODO find or contrive an example that contains an free energy optimizer switch
+
+A PT flash reactor involves the reaction and conversion of $n$ chemical species in a feed mixture into vapor and liquid output fractions, under constrained pressure and temperature \cite{ritschelAlgorithmGradientbasedDynamic2018}.
+
+The plan for this section is to contrive some "reality-adjacent" example with a forcing heat input into a UV or PV flash vessel. Then, we'll be able to demonstrate that local-optimizer tracking works on this very common type of differential equation; i.e. that local optimizer tracking could dynamic optimization or model-based control of chemical reactors. 
+
+I'm thinking of choosing a liquid-liquid mixture as the input, simulating some addition of energy, and tuning the numbers so that the pictures look pretty. Ideally, from a technical standpoint, we'd see that the local-optimizer tracking code performs much better than the "always-optimize" code. This will be even more painfully obvious as the optimization problem increases in dimension... it might not even be feasible as-is, since even a two-species reaction requires multiple Lagrange multipliers. 
+
+I'll want to duplicate figures \ref{fig:easy-cost-comparison} and \ref{fig:easy-example-solution} to show that this process provides a realistic result.
+
+The current difficulty here is that the Hessian of the Lagrangian is always indefinite,so B\&B can't capture the optima. Currently implementing a bordered hessian test and the appropriate behavior around it.
+
+
+
+
+%\begin{figure}[h]
+%	\vspace{10em}
+%	\caption{Comparison of runtime costs of the DAEO solver applied to \eqref{eq:complicated-example}.  A poor estimate of these constants leads to more time steps that need to be treated with the event correction procedure, which increases the computational cost of the solver.}
+%	\label{fig:complicated-runtime-cost}
+%\end{figure}
+
+\section{Conclusions}
+A new DAEO solver was developed to take advantage of the local optimizer tracking and jump event detection techniques presented in \cite{deussenNumericalSimulationDifferentialalgebraic2023}. The solver was tested on example DAEO problems with both fixed- and time-dependent sets of optimizers $\left\{y^k\right\}$, and produces accurate results on both types of problems. However, the solver is very sensitive to parameters chosen by the user, namely, the decision threshold for event detection. The best possible choice for this threshold should never cause the erroneous detection of an event, but the possibility of emerging or vanishing optima makes this choice non-trivial.
+
+Most significantly, the local optimizer tracking technique saves significant computational effort over current sequential methods for solving DAEOs\cite{bieglerNonlinearProgrammingConcepts2010, plochDirectSingleShooting2022, plochMultiscaleDynamicModeling2019}, even if $n_y = 1$. 
+
+\section{Further Work}
+
+In order for the local optimizer tracking and event detection techniques to be relevant solution methods for larger problems ($n_x, n_y > 10$), such as the biorefinery simulation in \cite{plochMultiscaleDynamicModeling2019}, an alternate test for the positive definite-ness of the interval Hessian would have to be developed. Sylvester's Criterion (\ref{def:sylvester}) requires verifying the sign of the interval Hessian's determinant, which can be computed directly for smaller interval matrices. However, for larger interval matrices, directly computing the interval determinant in any reasonable amount of time requires decomposing the matrix, methods for which are developed in \cite{goldsztejnGeneralizedIntervalLU2007, neumaierIntervalMethodsSystems1990a}. It would also be viable to take advantage of the symmetry of the interval Hessian, and directly test its interval eigenvalues \cite{deifIntervalEigenvalueProblem1991}.
+
+Currently, the Lipschitz coefficients and bounds for $\partial_ty^k$ are set by the user, and the solver is very sensitive to these chosen parameters. 
+
+% TODO mention differential programming
 
 
 \newpage

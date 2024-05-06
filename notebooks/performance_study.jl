@@ -1,8 +1,18 @@
 ### A Pluto.jl notebook ###
-# v0.19.40
+# v0.19.41
 
 using Markdown
 using InteractiveUtils
+
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+end
 
 # ╔═╡ 17f7f082-c48c-11ee-323b-91db1276203b
 begin
@@ -61,6 +71,9 @@ N_RUNS::Int = 6
 md"""
 # Event Correction
 """
+
+# ╔═╡ 1afd8328-dc5b-43f1-966a-5ead49dc67e4
+plot_style_kwargs = (:xlabelfontsize=>18, :ylabelfontsize=>18, :legendfontsize=>16, :xtickfontsize=>10, :ytickfontsize=>10, :dpi=>600)
 
 # ╔═╡ a36bf3e6-81e5-4d84-8181-5418fd061b6f
 function x1_exact(t)
@@ -185,9 +198,6 @@ df1 = filter(with_events[3]) do row
 	row.EVENTID in (SOLVER_BEGIN, TIME_STEP_EVENT_CORRECTED, TIME_STEP_NO_EVENT) && row.T <= 1.0
 end
 
-# ╔═╡ dde1ec3f-512b-4103-95d0-722802c3ed79
-diff(df1.T)[15:40]
-
 # ╔═╡ af8e69b5-9a27-4201-b97d-b2326efa9bd5
 let 
 	err = map(with_events) do df
@@ -196,7 +206,7 @@ let
 		end)
 		evt.T
 	end .- -log(0.5)/3
-	p = scatter(time_step_size.(with_events), abs.(err), xflip = true, xaxis=:log10, yaxis=:log10, label=false, marker=:x, markersize=8, msw=4, dpi=600, minorticks=true, xlabel=L"\Delta t", ylabel=L"|t_{e, est} - t_e|", legendfontsize=22, ylabelfontsize=22, xlabelfontsize=22)
+	p = scatter(time_step_size.(with_events), abs.(err), xflip = true, xaxis=:log10, yaxis=:log10, marker=:x, markersize=8, msw=3, dpi=600, minorticks=true, xlabel=L"\Delta t", ylabel=L"|t_{e, est} - t_e|", label="Event Location Error"; plot_style_kwargs...)
 	plot!(p, time_step_size.(with_events), dt -> dt.^2/10, ls=:dashdot, label=L"\mathcal{O}(\Delta t^2)")
 	# plot!(p, [1, 1.0e-6], [1.0e-10, 1.0e-10], label="Event Locator Tolerance")
 	savefig(p, "../ad2024/gfx/simple_ex_event_err.pdf")
@@ -214,6 +224,28 @@ end;
 # ╔═╡ bd7da423-3545-4141-9890-b5eadd4a24b1
 total_runtime.(only_global)
 
+# ╔═╡ a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
+let
+	data = map(hcat(total_runtime.(with_events), 
+					total_runtime.(only_global))) do v
+		uconvert(u"s", v)
+	end
+	p = scatter(time_step_size.(with_events), data, xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime", labels=["Event Detection" "Only Global Optimization"], markers=[:x :+], ms=8, msw=3, xflip=true, xminorticks=true,yminorgrid=true, legend=:topleft; plot_style_kwargs...)
+	savefig(p, "../ad2024/gfx/easy_cost.pdf")
+	p
+end
+
+# ╔═╡ 8172aa17-bf51-4a39-a97c-d1bcca261539
+let
+	ts = map(hcat(total_runtime.(with_events), 
+		total_runtime.(only_global))) do v
+		uconvert(u"ms", v)
+	end
+	lines = join([mapreduce(*, r; init="") do v
+			"$v & "
+			end for r ∈ eachrow(ts)], "\\")
+end
+
 # ╔═╡ fc36373b-efb6-475e-975a-4d7dd71f454f
 without_events = map(joinpath(data_file_directory, "se_tracking_noevents_10_minus$(i)_solver_log.tsv") for i=0:(N_RUNS-1)) do file
 	make_data(file) |> simple_ex_err_transform!
@@ -221,38 +253,22 @@ end;
 
 # ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
 let n = 1
-	p = scatter([-log(0.5)/3], x1_exact, label="Event", marker=:x)
-	plot!(p, 0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x")
-	scatter!(p, with_events[n].T, with_events[n].X, label=L"x_{ev}(t)", marker=:plus, msw=2)
-	scatter!(p, without_events[n].T, without_events[n].X, label=L"x_{noev}(t)", marker=:x)
-	title!(p, "Simple Example; Computed vs. Exact; "*L"dt=%$(time_step_size(with_events[n]))")
+	p = plot(0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x", lw=1; plot_style_kwargs...)
+	scatter!(p, with_events[n].T, with_events[n].X, label=L"x_{ev}(t)", marker=:x, msw=3, ms=6)
+	scatter!(p, without_events[n].T, without_events[n].X, label=L"x_{noev}(t)", marker=:+, msw=3, ms=6)
+	vline!(p, [-log(0.5)/3], label=L"t_e", ls=:dashdot)
+	# title!(p, "Simple Example; Computed vs. Exact; "*L"dt=%$(time_step_size(with_events[n]))")
+	savefig(p, "../ad2024/gfx/easy_daeo_solution.pdf")
 	p
 end
 
 # ╔═╡ 43ee777f-8b59-402e-9ee2-1066d4127b41
 let
-	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=:true, marker=:+, ms=8, msw=4, legend=:bottomleft, label="Event-Aware", xlabel=L"\Delta t", dpi=600)
-	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, xminorgrid=true, minorticks=:true, marker=:x, ms=8, msw=4, label="Event-Ignorant", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}", xflip=true, xlabelfontsize=20, ylabelfontsize=20, legendfontsize=12)
+	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=true, marker=:+, ms=8, msw=3, legend=:bottomleft, label="With Event Detection", xlabel=L"\Delta t"; plot_style_kwargs...)
+	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, xminorgrid=true, minorticks=:true, marker=:x, ms=8, msw=3, label="Without Event Detection", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}", xflip=true)
 	plot!(p, [10.0^h for h=0:-1:(-1*(N_RUNS-1))], [t->0.1*t^2], label=L"O(\Delta t^2)", ls=:dashdot)
 	savefig(p, "../ad2024/gfx/easy_daeo_convergence.pdf")
 	p
-end
-
-# ╔═╡ a381c1c8-59aa-4981-b164-e8a9ad0b1f0a
-let
-	data = map(hcat(total_runtime.(with_events), 
-					total_runtime.(without_events), 
-					total_runtime.(only_global))) do v
-		uconvert(u"ms", v)
-	end
-	p = scatter(time_step_size.(with_events), data, xscale=:log10, xlabel=L"\Delta t", ylabel="Runtime", labels=["Event Tracking" "No Event Tracking" "Only Global Optimization"], markers=[:x :+ :star], ms=8, msw=[4 4 1], xflip=true, xminorticks=true, xlabelfontsize=20, ylabelfontsize=20, legendfontsize=14, gridalpha=0.75,yminorgrid=true, legend=:topleft, dpi=600)
-	p
-end
-
-# ╔═╡ 8172aa17-bf51-4a39-a97c-d1bcca261539
-map(hcat(total_runtime.(with_events), total_runtime.(without_events), 
-	total_runtime.(only_global))) do v
-	uconvert(u"ms", v)
 end
 
 # ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
@@ -271,11 +287,20 @@ gw_data_lowtol = make_data(joinpath(data_file_directory,"griewank_example_lowtol
 
 # ╔═╡ 9cc02865-0439-442b-bb62-9f32cb9b48c2
 let
-	p = plot(gw_data_lowtol.T, gw_data_lowtol.X, legend=false, title="Cursed Solution")
+	p = plot(gw_data_lowtol.T, gw_data_lowtol.X, label=L"x(t)", lw = 2; plot_style_kwargs...)
 	events = filter(gw_data_lowtol) do row
 		row.EVENTID == TIME_STEP_EVENT_CORRECTED
 	end
-	scatter!(p, events.T, events.X)
+	tvals = [0., 0.5, 1.0, 1.25, 2.0]
+	old_ticks = (tvals, ["$t" for t∈tvals])
+	real_events = events.T[[3, 4, 5, 8]]
+	vline!(p, real_events, ls=:dashdot, label="Events", lw=2)
+	scatter!(p, events.T, events.X, marker=:+, ms=12, msw=6, label = "Detected Events")
+	
+	evt_ticks = (real_events, [L"t_{e%$(i)}" for i∈1:length(real_events)])
+	new_ticks = (old_ticks[1] ∪ evt_ticks[1], old_ticks[2] ∪ evt_ticks[2])
+	xticks!(p, new_ticks)
+	savefig(p, "../ad2024/gfx/hard_daeo_solution.pdf")
 	p
 end
 
@@ -291,13 +316,21 @@ end
 
 # ╔═╡ 87771b74-eddd-4514-b129-bb7350bc7ee8
 let df = gw_data_lowtol
-	p = plot(df.T, df.DX ./ df.DT, label=L"\dot x", xlabel=L"t", dpi=300)
+	p = plot(df.T, df.DX ./ df.DT, label=L"\dot x", xlabel=L"t", lw=2; plot_style_kwargs...)
 	events = filter(df) do row
 		row.EVENTID == TIME_STEP_EVENT_CORRECTED
 	end
-	for evt ∈ eachrow(events)
-		plot!(p, [evt.T, evt.T], [0, 0.5], ls=:dashdot, lw=1, label=false, color=:black)
-	end
+	tvals = [0., 0.5, 1.0, 2.0]
+	old_ticks = (tvals, ["$t" for t∈tvals])
+	real_events = events.T[[3,4, 5, 8]]
+	vline!(p, real_events, ls=:dashdot, label="Events", lw=2)
+	evt_ticks = (real_events, [L"t_{e%$(i)}" for i∈1:length(real_events)])
+	new_ticks = (old_ticks[1] ∪ evt_ticks[1], old_ticks[2] ∪ evt_ticks[2])
+	xticks!(p, new_ticks)
+	#for evt ∈ eachrow(events)
+	#	plot!(p, [evt.T, evt.T], [0, 0.5], ls=:dashdot, lw=1, label=false, color=:black)
+	#end
+	savefig(p, "../ad2024/gfx/hard_daeo_solution_xdot.pdf")
 	p
 end
 
@@ -315,9 +348,22 @@ end
 let c = 5.0, d = 5.0
 	x = 0:0.005:6.0
 	y = 0:0.005:6.0
-	fn(x, y) = (x-y)^2 + d*sin(c*y) + 4.0*(x+y)
+	fn(x, y) = (x-y)^2 + d*sin(c*y)
 	data = fn.(x,y')
-	surface(x, y, data, camera=(-30, 30))
+	plot(x, y, data, camera=(30, 30); plot_style_kwargs...)
+end
+
+# ╔═╡ 6c63de5c-d5d1-4a49-8fd2-daef511a5aec
+@bind x_in Slider(1.:0.001:12.0, show_value=true, default=1.0)
+
+# ╔═╡ bf21d26d-7c6d-4fe8-9343-19dc658b3275
+let x = x_in
+	y = 0:0.005:10.0
+	#plot(y, (y,) -> (x_in-y)^2 + sin(5. * y), ylims=(-2, 30))
+	p = plot(y, (y,) -> 2*(y-x_in) + 5. *cos(5. *y), legend=false, dpi=600)
+	plot!(p, y, (y,)->2*(y-(x+0.5))+5. *cos(5. *y))
+	hline!(p, [0., 1.0])
+	ylims!(p, (-2, 2))
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -347,7 +393,7 @@ Unitful = "~1.19.0"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.10.2"
+julia_version = "1.10.3"
 manifest_format = "2.0"
 project_hash = "dfed254919f094610bf536491d8f7d1baa02d7d7"
 
@@ -439,7 +485,7 @@ weakdeps = ["Dates", "LinearAlgebra"]
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
-version = "1.1.0+0"
+version = "1.1.1+0"
 
 [[deps.ConcurrentUtilities]]
 deps = ["Serialization", "Sockets"]
@@ -1545,8 +1591,8 @@ version = "1.4.1+1"
 # ╠═7de10fca-3f6b-4d01-aea4-7e060abe98cf
 # ╠═baa48d9b-50e3-458e-8105-568d96453209
 # ╠═848f19be-77a7-42ef-a868-c133a923c820
-# ╠═dde1ec3f-512b-4103-95d0-722802c3ed79
-# ╟─af8e69b5-9a27-4201-b97d-b2326efa9bd5
+# ╠═1afd8328-dc5b-43f1-966a-5ead49dc67e4
+# ╠═af8e69b5-9a27-4201-b97d-b2326efa9bd5
 # ╠═a36bf3e6-81e5-4d84-8181-5418fd061b6f
 # ╠═43ee777f-8b59-402e-9ee2-1066d4127b41
 # ╠═489e5666-93b5-4198-aba1-c2eb5da5551f
@@ -1581,5 +1627,7 @@ version = "1.4.1+1"
 # ╠═87771b74-eddd-4514-b129-bb7350bc7ee8
 # ╠═a54f34ab-e4a4-4f52-a394-2588b63f345d
 # ╠═2e9360a6-7f0b-4f95-b1af-d76296511d33
+# ╠═6c63de5c-d5d1-4a49-8fd2-daef511a5aec
+# ╠═bf21d26d-7c6d-4fe8-9343-19dc658b3275
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

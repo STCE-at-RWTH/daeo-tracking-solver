@@ -61,8 +61,8 @@ public:
    * @brief Type of the local optimizer.
    */
   using optimizer_t =
-      BNBLocalOptimizer<OBJECTIVE, NUMERIC_T,
-                        suggested_solver_policies<NUMERIC_T>, YDIMS, NPARAMS>;
+      BNBOptimizer<OBJECTIVE, NUMERIC_T,
+                        suggested_interval_policies<NUMERIC_T>, YDIMS, NPARAMS>;
 
   /**
    * @brief Type for an optimizer of the objective function.
@@ -157,21 +157,54 @@ public:
                      next.y);
         fmt::println("  BNB optimizer yields candidates for y at {:::.4e}",
                      from_opt.y);
-        // TODO these routines are BAD and need to be fixed before moving on
+
+        // do we use a flat threshold or a neighborhood criterion?
         if (from_opt.n_local_optima() <= next.n_local_optima()) {
           fmt::println(
               "  Optimizer may have vanished, from {:d} to {:d} optimizers.",
               next.n_local_optima(), from_opt.n_local_optima());
-          fmt::println("  Reordering optima to match {:::.4e}", next.y);
-          next = correct_optimizer_permutation(from_opt, next,
-                                               settings.EVENT_DRIFT_COEFF * dt);
+          fmt::println("  Reordering optima to match {:::.4e}", from_opt.y);
+          if (settings.LINEARIZE_OPTIMIZER_DRIFT) {
+            vector<NUMERIC_T> neighborhoods(from_opt.n_local_optima());
+            std::transform(
+                from_opt.y.begin(), from_opt.y.end(), neighborhoods.begin(),
+                [&h = (this->m_objective), t = next.t, x = next.x, &p = params,
+                 &settings = (this->settings)](y_t y) -> NUMERIC_T {
+                  y_t dhdy = h.grad_y(t, x, y, p);
+                  // take one newton step
+                  y_t to_zero = dhdy.binaryExpr(
+                      y,
+                      [](auto dy, auto y_i) -> auto{ return y_i / dy; });
+                  // scale by appropraite setting
+                  return to_zero.norm() * settings.EVENT_DRIFT_COEFF;
+                });
+            next = correct_optimizer_permutation(from_opt, next, neighborhoods);
+          } else {
+            next = correct_optimizer_permutation(
+                from_opt, next, settings.EVENT_DRIFT_COEFF * dt);
+          }
           fmt::println("               new order is {:::.4e}", next.y);
-
         } else {
           fmt::println("  Optimizer emerged.");
           fmt::println("  Reordered optima to match {:::.4e}", next.y);
-          from_opt = correct_optimizer_permutation(
-              next, from_opt, settings.EVENT_DRIFT_COEFF * dt);
+          if (settings.LINEARIZE_OPTIMIZER_DRIFT) {
+            vector<NUMERIC_T> neighborhoods(from_opt.n_local_optima());
+            std::transform(
+                from_opt.y.begin(), from_opt.y.end(), neighborhoods.begin(),
+                [&h = (this->m_objective), t = next.t, x = next.x, &p = params,
+                 &settings = (this->settings)](y_t y) -> NUMERIC_T {
+                  y_t dhdy = h.grad_y(t, x, y, p);
+                  y_t to_zero = dhdy.binaryExpr(
+                      y,
+                      [](auto dy, auto y_i) -> auto{ return y_i - y_i / dy; });
+                  return to_zero.norm() * settings.EVENT_DRIFT_COEFF;
+                });
+            from_opt =
+                correct_optimizer_permutation(next, from_opt, neighborhoods);
+          } else {
+            from_opt = correct_optimizer_permutation(
+                next, from_opt, settings.EVENT_DRIFT_COEFF * dt);
+          }
           fmt::println("               new order is {:::.4e}", from_opt.y);
         }
 
@@ -297,16 +330,19 @@ private:
     return dy;
   }
 
-  // TODO BAD
+  /**
+   * @brief Take
+   *
+   *
+   */
   solution_state_t correct_optimizer_permutation(solution_state_t const &few,
                                                  solution_state_t const &many,
                                                  NUMERIC_T const evt_thold) {
     vector<size_t> perm(few.n_local_optima());
     for (size_t i = 0; i < perm.size(); i++) {
       for (size_t j = 0; j < many.n_local_optima(); j++) {
-        // we reuse event eps here since it represents
-        // "acceptable accumulated integration error"
-        if ((many.y[j] - few.y[i]).norm() < evt_thold) {
+        NUMERIC_T diff = (many.y[j] - few.y[i]).norm();
+        if (diff < evt_thold) {
           perm[i] = j;
         }
       }
@@ -320,24 +356,65 @@ private:
     }
     // if there are "leftovers" that weren't captured in the permutation vector
     if (few.n_local_optima() != many.n_local_optima()) {
-      vector<size_t> leftovers;
-      for (size_t i = 0; i < many.n_local_optima(); i++) {
-        bool leftover = true;
-        for (size_t j = 0; (j < perm.size() && leftover); j++) {
-          leftover = leftover && (perm[j] != i);
-        }
-        if (leftover) {
-          leftovers.push_back(i);
-        }
-      }
-      for (size_t i = 0; i < leftovers.size(); i++) {
-        res.y[perm.size() + i] = many.y[leftovers[i]];
-        if (leftovers[i] == many.i_star) {
-          res.i_star = perm.size() + i;
+      rearrange_leftovers(res, many, perm);
+    }
+    return res;
+  }
+
+  /**
+   * @brief Take
+   *
+   *
+   */
+  solution_state_t
+  correct_optimizer_permutation(solution_state_t const &few,
+                                solution_state_t const &many,
+                                vector<NUMERIC_T> const neighborhoods) {
+    vector<size_t> perm(few.n_local_optima());
+    for (size_t i = 0; i < perm.size(); i++) {
+      for (size_t j = 0; j < many.n_local_optima(); j++) {
+        NUMERIC_T diff = (many.y[j] - few.y[i]).norm();
+        if (diff < neighborhoods[i]) {
+          perm[i] = j;
         }
       }
     }
+    solution_state_t res = many;
+    for (size_t i = 0; i < perm.size(); i++) {
+      res.y[i] = many.y[perm[i]];
+      if (perm[i] == many.i_star) {
+        res.i_star = i;
+      }
+    }
+    // if there are "leftovers" that weren't captured in the permutation vector
+    if (few.n_local_optima() != many.n_local_optima()) {
+      rearrange_leftovers(res, many, perm);
+    }
     return res;
+  }
+
+  /**
+   * @brief
+   *
+   */
+  void rearrange_leftovers(solution_state_t &res, solution_state_t const &many,
+                           vector<size_t> const &perm) {
+    vector<size_t> leftovers;
+    for (size_t i = 0; i < many.n_local_optima(); i++) {
+      bool leftover = true;
+      for (size_t j = 0; (j < perm.size() && leftover); j++) {
+        leftover = leftover && (perm[j] != i);
+      }
+      if (leftover) {
+        leftovers.push_back(i);
+      }
+    }
+    for (size_t i = 0; i < leftovers.size(); i++) {
+      res.y[perm.size() + i] = many.y[leftovers[i]];
+      if (leftovers[i] == many.i_star) {
+        res.i_star = perm.size() + i;
+      }
+    }
   }
 
   /*

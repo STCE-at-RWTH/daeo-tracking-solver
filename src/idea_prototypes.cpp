@@ -10,8 +10,8 @@ using boost::numeric::square;
 
 #include "Eigen/Dense"
 #include "dco.hpp"
-#include "fmt/format.h"
 #include "fmt/chrono.h"
+#include "fmt/format.h"
 #include "fmt/ranges.h"
 #include "utils/sylvesters_criterion.hpp"
 
@@ -23,13 +23,13 @@ using boost_interval_transc_t = boost::numeric::interval<
            boost::numeric::interval_lib::checking_base<T>>>;
 using double_ival = boost_interval_transc_t<double>;
 
-int main(int argc, char *argv[])
-{
-    Eigen::MatrixXd v1;
-    v1 = Eigen::MatrixXd::Random(13, 13);
-    std::cout << v1 << "\n\n";
-    std::cout << v1(drop_idx{1, 4}, Eigen::all) << std::endl;
-    std::cout << bad_determinant(v1) << std::endl;
-
-    return 0;
+int main(int argc, char *argv[]) {
+  Eigen::VectorXd v1;
+  v1 = Eigen::VectorXd::Random(4);
+  Eigen::VectorXd v2(4);
+  v2 << 1.0, 2.0, 3.0, 4.0;
+  Eigen::VectorXd v3 = v2.binaryExpr(
+      v1, [](auto y, auto z) -> auto{ return y; });
+  fmt::println("{::.4e}", v3);
+  return 0;
 }

@@ -6,13 +6,14 @@
 #ifndef _FUNCTION_WRAPPER_HPP
 #define _FUNCTION_WRAPPER_HPP
 
-#include <concepts>
-#include <tuple>
 #include <vector>
 
-#include "Eigen/Dense" // include eigen before dco
+// It's recommended to include eigen/boost before DCO
+#include "Eigen/Dense"
 #include "boost/numeric/interval.hpp"
 #include "dco.hpp"
+
+#include "utils/ntuple.hpp"
 
 /**
  * @brief Wraps a function of the form f(t, x, y, p) for use with the optimizer
@@ -21,11 +22,11 @@
  */
 template <typename FN> class DAEOWrappedFunction {
 
-  size_t n_h_evaluations = 0;
-  size_t n_dy_evaluations = 0;
-  size_t n_d2y_evaluations = 0;
-  size_t n_dx_evaluations = 0;
-  size_t n_d2xy_evaluations = 0;
+  mutable size_t n_h_evaluations = 0;
+  mutable size_t n_dy_evaluations = 0;
+  mutable size_t n_d2y_evaluations = 0;
+  mutable size_t n_dx_evaluations = 0;
+  mutable size_t n_d2xy_evaluations = 0;
 
   // This return type is clumsy. Need to figure out a way to express
   // "promote this to a dco type, otherwise promote to an interval, otherwise
@@ -45,7 +46,7 @@ public:
    */
   template <typename NUMERIC_T, typename XT, typename YT, int YDIMS, int PDIMS>
   auto value(NUMERIC_T const t, XT const x, Eigen::Vector<YT, YDIMS> const &y,
-             Eigen::Vector<NUMERIC_T, PDIMS> const &p)
+             Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
       -> decltype(wrapped_fn(t, x, y, p)) {
     n_h_evaluations += 1;
     return wrapped_fn(t, x, y, p);
@@ -54,7 +55,7 @@ public:
   template <typename NUMERIC_T, typename Y_ACTIVE_T, int YDIMS, int PDIMS>
   auto grad_y(NUMERIC_T const t, NUMERIC_T const x,
               Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
-              Eigen::Vector<NUMERIC_T, PDIMS> const &p)
+              Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
       -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), YDIMS> {
     n_dy_evaluations += 1;
     // define dco types and get a pointer to the tape
@@ -89,7 +90,7 @@ public:
   template <typename NUMERIC_T, typename X_ACTIVE_T, int YDIMS, int PDIMS>
   X_ACTIVE_T grad_x(NUMERIC_T const t, X_ACTIVE_T const x,
                     Eigen::Vector<NUMERIC_T, YDIMS> const &y,
-                    Eigen::Vector<NUMERIC_T, PDIMS> const &p) {
+                    Eigen::Vector<NUMERIC_T, PDIMS> const &p) const {
     n_dx_evaluations += 1;
     using dco_mode_t = dco::gt1s<X_ACTIVE_T>;
     using active_t = typename dco_mode_t::type;
@@ -105,7 +106,7 @@ public:
   Eigen::Matrix<Y_ACTIVE_T, YDIMS, YDIMS>
   hess_y(NUMERIC_T const t, NUMERIC_T const x,
          Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
-         Eigen::Vector<NUMERIC_T, PDIMS> const &p) {
+         Eigen::Vector<NUMERIC_T, PDIMS> const &p) const {
     n_d2y_evaluations += 1;
     using dco_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
     using dco_mode_t = dco::ga1s<dco_tangent_t>;
@@ -145,7 +146,7 @@ public:
   Eigen::Vector<XY_ACTIVE_T, YDIMS>
   d2dxdy(NUMERIC_T const t, XY_ACTIVE_T const x,
          Eigen::Vector<XY_ACTIVE_T, YDIMS> const &y,
-         Eigen::Vector<NUMERIC_T, PDIMS> const &p) {
+         Eigen::Vector<NUMERIC_T, PDIMS> const &p) const {
     n_d2xy_evaluations += 1;
     using dco_tangent_t = typename dco::gt1s<XY_ACTIVE_T>::type;
     using dco_mode_t = dco::ga1s<dco_tangent_t>;
@@ -172,6 +173,15 @@ public:
           dco::derivative(dco::derivative(y_active(i))); // harvest d2dxdy
     }
     return ddxddy;
+  }
+
+  /**
+   * @brief Returns, as a tuple of 5 elements, the number of calls to each of
+   * the provided drivers.
+   */
+  ntuple<5, size_t> statistics() const {
+    return {n_h_evaluations, n_dy_evaluations, n_dx_evaluations,
+            n_d2y_evaluations, n_d2xy_evaluations};
   }
 };
 

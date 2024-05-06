@@ -16,10 +16,19 @@ using suggested_interval_policies = boost::numeric::interval_lib::policies<
         boost::numeric::interval_lib::rounded_transc_std<T>>,
     boost::numeric::interval_lib::checking_base<T>>;
 
+enum BNBOptimizerMode{
+  FIND_ALL_LOCAL_MINIMIZERS,
+  FIND_ONLY_GLOBAL_MINIMIZER,
+  FIND_ALL_SADDLE_POINTS
+};
+
 template <typename NUMERIC_T> struct BNBOptimizerSettings {
+  BNBOptimizerMode MODE = FIND_ALL_LOCAL_MINIMIZERS;
+  
   NUMERIC_T TOL_Y = 1.0e-8;
   std::size_t MAXITER = 1000;
-  std::size_t MAX_REFINE_ITER = 40;
+  std::size_t MAX_REFINE_ITER = 100;
+
   bool LOGGING_ENABLED = true;
 };
 

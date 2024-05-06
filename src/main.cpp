@@ -16,7 +16,7 @@ using namespace std::numbers;
 
 template <typename T>
 using boost_interval_transc_t =
-    boost::numeric::interval<T, suggested_solver_policies<T>>;
+    boost::numeric::interval<T, suggested_interval_policies<T>>;
 using double_ival = boost_interval_transc_t<double>;
 
 constexpr int NUM_Y_DIMS = 1;
@@ -73,20 +73,22 @@ void run_simple_example(DAEOSolverSettings<T> solver_s,
 void griewank_example_event_tolerance_study() {
 
   BNBOptimizerSettings<double> opt_s;
+  opt_s.TOL_Y = 1.0e-10;
   opt_s.LOGGING_ENABLED = false;
 
   DAEOSolverSettings<double> settings_lowtol;
+  settings_lowtol.LINEARIZE_OPTIMIZER_DRIFT = false;
   settings_lowtol.NEWTON_EPS = 1.0e-10;
-  settings_lowtol.EVENT_EPS = 1.0e-8;
-  settings_lowtol.y0_min = 0.0;
-  settings_lowtol.y0_max = 6.0;
+  settings_lowtol.EVENT_DETECTION_EPS = 1.0e-4;
+  settings_lowtol.y0_min = -10.0;
+  settings_lowtol.y0_max = 10.0;
   settings_lowtol.SEARCH_FREQUENCY = 100;
 
   auto settings_lowtol_noevents = settings_lowtol;
   settings_lowtol_noevents.EVENT_DETECTION_AND_CORRECTION = false;
 
   auto settings_hightol = settings_lowtol;
-  settings_hightol.EVENT_EPS = 5.0e-6;
+  //settings_hightol.EVENT_DETECTION_EPS = 5.0e-4;
 
   auto settings_hightol_noevents = settings_hightol;
   settings_hightol_noevents.EVENT_DETECTION_AND_CORRECTION = false;
@@ -109,9 +111,9 @@ void griewank_example_event_tolerance_study() {
   solver_t solver3(f, h, opt_s, settings_hightol);
   solver_t solver4(f, h, opt_s, settings_hightol_noevents);
 
-  solver1.solve_daeo(0., 1.5, 0.0001, 1.0, p, "griewank_example_lowtol");
+  solver1.solve_daeo(0., 2.0, 0.0001, 1.0, p, "griewank_example_lowtol");
   // solver2.solve_daeo(0., 2.0, 0.0005, 1.0, p, "griewank_example_lowtol_noevents");
-  solver3.solve_daeo(0., 1.5, 0.0001, 1.0, p, "griewank_example_hightol");
+  // solver3.solve_daeo(0., 1.25, 0.0001, 1.0, p, "griewank_example_hightol");
   // solver4.solve_daeo(0., 2.0, 0.0005, 1.0, p, "griewank_example_hightol_noevents");
 }
 
@@ -132,7 +134,7 @@ void simple_example_perf_study(int N) {
 
   DAEOSolverSettings<double> solver_s;
   solver_s.NEWTON_EPS = 1.0e-8;
-  solver_s.EVENT_EPS = 5.0e-6;
+  solver_s.EVENT_DETECTION_EPS = 5.0e-6;
   solver_s.y0_min = -6.0;
   solver_s.y0_max = 6.0;
 

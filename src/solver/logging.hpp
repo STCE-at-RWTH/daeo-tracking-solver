@@ -40,6 +40,7 @@ enum OptimizerEventCode {
 inline auto format_as(OptimizerEventCode evc) { return fmt::underlying(evc); }
 
 enum OptimizerTestCode {
+  CONVERGENCE_TEST_INCONCLUSIVE = 0,
   CONVERGENCE_TEST_PASS = 1,
   VALUE_TEST_FAIL = 2,
   GRADIENT_TEST_FAIL = 4,
