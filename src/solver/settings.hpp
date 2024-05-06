@@ -8,16 +8,10 @@
 #ifndef _SOLVER_SETTINGS_HPP
 #define _SOLVER_SETTINGS_HPP
 
-#include <chrono>
-#include <fstream>
-#include <ranges>
-#include <string>
-#include <vector>
-
 #include "boost/numeric/interval.hpp"
 
 template <typename T>
-using suggested_solver_policies = boost::numeric::interval_lib::policies<
+using suggested_interval_policies = boost::numeric::interval_lib::policies<
     boost::numeric::interval_lib::save_state<
         boost::numeric::interval_lib::rounded_transc_std<T>>,
     boost::numeric::interval_lib::checking_base<T>>;
@@ -37,7 +31,7 @@ template <typename NUMERIC_T> struct DAEOSolverSettings {
   size_t MAX_NEWTON_ITERATIONS = 30;
   NUMERIC_T NEWTON_EPS = 1.0e-8;
   NUMERIC_T EVENT_DETECTION_EPS = 5.0e-6; // this may be computeable from limits
-  NUMERIC_T EVENT_DRIFT_COEFF = 0.1; // these might always be the same.
+  NUMERIC_T EVENT_DRIFT_COEFF = 0.1;      // these might always be the same.
 
   bool TRACK_LOCAL_OPTIMA = true;
   bool EVENT_DETECTION_AND_CORRECTION = true;
