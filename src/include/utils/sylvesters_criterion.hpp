@@ -132,6 +132,25 @@ bool leading_minors_positive(Eigen::Matrix<T, NDIMS, NDIMS> const &A,
 /**
  * @brief Test if each of the leading principal minors
  * (determinants of upper-left-justified square matrices)
+ * of A are strictly negative.
+ * @param[in] A
+ * @param[in] skip The number of leading principal minors to skip testing (default zero)
+ */
+template <typename T, int NDIMS>
+bool leading_minors_negative(Eigen::Matrix<T, NDIMS, NDIMS> const &A,
+                             Eigen::Index skip = 0) {
+  for (int n = skip; n < A.rows(); n++) {
+    Eigen::MatrixX<T> submatrix = A.block(0, 0, n + 1, n + 1);
+    if (nonnegative(bad_determinant(submatrix))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * @brief Test if each of the leading principal minors
+ * (determinants of upper-left-justified square matrices)
  * of A alternate in sign, with minors of odd order < 0
  * and minors of even order > 0.
  * @param[in] A

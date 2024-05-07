@@ -24,13 +24,13 @@ enum BNBOptimizerMode{
 
 template <typename NUMERIC_T> struct BNBOptimizerSettings {
   BNBOptimizerMode MODE = FIND_ALL_LOCAL_MINIMIZERS;
-  
-  NUMERIC_T TOL_Y = 1.0e-8;
   std::size_t MAXITER = 100'000;
   std::size_t MAX_REFINE_ITER = 1'000;
-  std::size_t HESSIAN_BORDER_SIZE = 0;
+  std::size_t NUM_EQUALITY_CONSTRAINTS = 0;
 
-  bool HESSIAN_IS_BORDERED = false;
+  NUMERIC_T TOL_Y = 1.0e-8;
+
+  bool OPTIMIZING_WITH_EQUALITY_CONSTRAINT = false;
   bool LOGGING_ENABLED = true;
 };
 
