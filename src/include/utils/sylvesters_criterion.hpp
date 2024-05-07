@@ -8,7 +8,6 @@
 
 #include "eigen_interval_extensions.hpp"
 
-
 /**
  * @brief Check if argument is less than or equal to zero.
  */
@@ -48,7 +47,8 @@ struct drop_idx {
 /**
  * @brief Inefficient determinant calculation.
  */
-template <typename T, int N, std::enable_if_t<(N != Eigen::Dynamic), bool> = true>
+template <typename T, int N,
+          std::enable_if_t<(N != Eigen::Dynamic), bool> = true>
 typename Eigen::Matrix<T, N, N>::Scalar
 bad_determinant(Eigen::Matrix<T, N, N> const &A) {
   using Eigen::seq;
@@ -83,7 +83,6 @@ template <typename T>
 typename Eigen::MatrixX<T>::Scalar bad_determinant(Eigen::MatrixX<T> const &A) {
   using Eigen::seq;
   typename Eigen::MatrixX<T>::Scalar det{0};
-
   if (A.rows() == 1) {
     det = A(0, 0);
   } else if (A.rows() == 2) {
@@ -111,29 +110,41 @@ typename Eigen::MatrixX<T>::Scalar bad_determinant(Eigen::MatrixX<T> const &A) {
   return det;
 }
 
+/**
+ * @brief Test if each of the leading principal minors
+ * (determinants of upper-left-justified square matrices)
+ * of A are strictly positive.
+ * @param[in] A
+ * @param[in] skip The number of leading principal minors to skip testing (default zero)
+ */
 template <typename T, int NDIMS>
-bool is_positive_definite(Eigen::Matrix<T, NDIMS, NDIMS> const &A) {
-  if (A.rows() != A.cols()) {
-    return false;
-  }
-  // non-square matrices cannot be positive definite
-  for (int n = 0; n < A.rows(); n++) {
-    Eigen::MatrixX<T> minor = A.block(0, 0, n + 1, n + 1);
-    if (nonpositive(bad_determinant(minor))) {
+bool leading_minors_positive(Eigen::Matrix<T, NDIMS, NDIMS> const &A,
+                             Eigen::Index skip = 0) {
+  for (int n = skip; n < A.rows(); n++) {
+    Eigen::MatrixX<T> submatrix = A.block(0, 0, n + 1, n + 1);
+    if (nonpositive(bad_determinant(submatrix))) {
       return false;
     }
   }
   return true;
 }
 
+/**
+ * @brief Test if each of the leading principal minors
+ * (determinants of upper-left-justified square matrices)
+ * of A alternate in sign, with minors of odd order < 0
+ * and minors of even order > 0.
+ * @param[in] A
+ * @param[in] skip The number of leading principal minors to skip testing (default zero)
+ */
 template <typename T, int NDIMS>
-bool is_negative_definite(Eigen::Matrix<T, NDIMS, NDIMS> const &A) {
-  if (A.rows() != A.cols()) {
-    return false;
-  }
-  for (int n = 0; n < A.rows(); n++) {
-    Eigen::MatrixX<T> minor = A.block(0, 0, n + 1, n + 1);
-    if (nonnegative(bad_determinant(minor))) {
+bool leading_minors_alternate(Eigen::Matrix<T, NDIMS, NDIMS> const &A,
+                             Eigen::Index skip = 0) {
+  for (int n = skip; n < A.rows(); n++) {
+    Eigen::MatrixX<T> submatrix = A.block(0, 0, n + 1, n + 1);
+    if ((submatrix.rows() & 1) && nonnegative(bad_determinant(submatrix))) {
+      return false;
+    }else if (nonpositive(bad_determinant(submatrix))){
       return false;
     }
   }
