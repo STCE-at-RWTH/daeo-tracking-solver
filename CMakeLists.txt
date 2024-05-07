@@ -61,7 +61,7 @@ add_executable(prototype src/idea_prototypes.cpp
 target_include_directories(prototype PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(prototype PRIVATE NAG::dco_cpp fmt::fmt)
 
-add_executable(optimizer src/verify-optimizer.cpp 
+add_executable(optimizer src/bnb-optimizer-demo.cpp 
   ${objective_headers} 
   ${bnb_solver_headers} 
   ${daeo_solver_headers})
