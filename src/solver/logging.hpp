@@ -45,9 +45,9 @@ enum OptimizerTestCode {
   VALUE_TEST_FAIL = 2,
   GRADIENT_TEST_FAIL = 4,
   GRADIENT_TEST_PASS = 8,
-  HESSIAN_NEGATIVE_DEFINITE = 16,
+  HESSIAN_TEST_LOCAL_MAX = 16,
   HESSIAN_MAYBE_INDEFINITE = 32,
-  HESSIAN_POSITIVE_DEFINITE = 64
+  HESSIAN_TEST_LOCAL_MIN = 64
 };
 
 inline auto format_as(OptimizerTestCode evc) { return fmt::underlying(evc); }

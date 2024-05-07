@@ -101,6 +101,10 @@ private:
    * @brief The objective function h(t, x, y; p) of which to find the minima.
    */
   DAEOWrappedFunction<OBJECTIVE_T> m_objective;
+
+  /**
+   *@brief Settings for this solver.
+   */
   BNBOptimizerSettings<NUMERIC_T> const settings;
 
   /**
@@ -228,7 +232,11 @@ private:
 
     // second derivative test
     y_hessian_interval_t d2hdy2(m_objective.hess_y(t, x, y_i, params));
-    result_code |= hessian_test(d2hdy2);
+    if (settings.OPTIMIZING_WITH_EQUALITY_CONSTRAINT) {
+      result_code |= bordered_hessian_test(d2hdy2);
+    } else {
+      result_code |= hessian_test(d2hdy2);
+    }
 
     // take actions based upon test results.
     vector<y_interval_t> candidate_intervals;
@@ -241,6 +249,8 @@ private:
           t, x, y_i, params, dims_converged, result_code, sresults);
       break;
     case FIND_ONLY_GLOBAL_MINIMIZER:
+      candidate_intervals = finalize_minimizers_with_value_test(
+          t, x, y_i, params, dims_converged, result_code, sresults);
       break;
     case FIND_ALL_SADDLE_POINTS:
       break;
@@ -270,7 +280,7 @@ private:
    * @brief Check that all of the dimensions in @c y_i are are smaller than the
    * user-specified tolerance.
    */
-  inline OptimizerTestCode convergence_test(y_interval_t const &y_i) {
+  OptimizerTestCode convergence_test(y_interval_t const &y_i) {
     if (std::all_of(y_i.begin(), y_i.end(),
                     [TOL = (this->settings.TOL_Y)](auto y) {
                       return (boost::numeric::width(y) <= TOL ||
@@ -285,8 +295,7 @@ private:
    * @brief Check if all dimensions have converged to less than the
    * user-specified tolerance.
    */
-  inline OptimizerTestCode
-  convergence_test(vector<bool> const &dims_converged) {
+  OptimizerTestCode convergence_test(vector<bool> const &dims_converged) {
     if (std::all_of(dims_converged.begin(), dims_converged.end(),
                     [](auto v) { return v; })) {
       return CONVERGENCE_TEST_PASS;
@@ -297,7 +306,7 @@ private:
   /**
    *@brief Test if the interval gradient contains zero.
    */
-  inline OptimizerTestCode gradient_test(y_interval_t const &dhdy) {
+  OptimizerTestCode gradient_test(y_interval_t const &dhdy) {
     bool grad_pass = std::all_of(dhdy.begin(), dhdy.end(), [](interval_t ival) {
       return boost::numeric::zero_in(ival);
     });
@@ -312,11 +321,26 @@ private:
    * @brief check the hessian for positive- or negative-definite-ness.
    * @param[in] d2hdy2
    */
-  inline OptimizerTestCode hessian_test(y_hessian_interval_t const &d2hdy2) {
-    if (is_positive_definite(d2hdy2)) {
-      return HESSIAN_POSITIVE_DEFINITE;
-    } else if (is_negative_definite(d2hdy2)) {
-      return HESSIAN_NEGATIVE_DEFINITE;
+  OptimizerTestCode hessian_test(y_hessian_interval_t const &d2hdy2) {
+    if (leading_minors_positive(d2hdy2)) {
+      return HESSIAN_TEST_LOCAL_MIN;
+    } else if (leading_minors_alternate(d2hdy2)) {
+      return HESSIAN_TEST_LOCAL_MAX;
+    }
+    return HESSIAN_MAYBE_INDEFINITE;
+  }
+
+  OptimizerTestCode bordered_hessian_test(y_hessian_interval_t const &d2hdy2) {
+    const size_t m = settings.NUM_EQUALITY_CONSTRAINTS;
+    if ((m & 1) && leading_minors_negative(d2hdy2, m)) {
+      // hessian test is "backwards", since we are testing an odd-order
+      // submatrix
+      return HESSIAN_TEST_LOCAL_MIN;
+    } else if (leading_minors_positive(d2hdy2, m)) {
+      // hessian test is regular style
+      return HESSIAN_TEST_LOCAL_MIN;
+    } else if (leading_minors_alternate(d2hdy2, m)) {
+      return HESSIAN_TEST_LOCAL_MAX;
     }
     return HESSIAN_MAYBE_INDEFINITE;
   }
@@ -328,10 +352,10 @@ private:
     vector<y_interval_t> candidate_intervals;
 
     if ((result_code & GRADIENT_TEST_FAIL) |
-        (result_code & HESSIAN_NEGATIVE_DEFINITE)) {
+        (result_code & HESSIAN_TEST_LOCAL_MAX)) {
       // gradient test OR hessian test failed
       // do nothing :)
-    } else if (result_code & HESSIAN_POSITIVE_DEFINITE) {
+    } else if (result_code & HESSIAN_TEST_LOCAL_MIN) {
       // gradient test and hessian test passed!
       // hessian is SPD -> h(x) on interval is convex
       y_interval_t y_res =
@@ -340,7 +364,7 @@ private:
       result_code |= CONVERGENCE_TEST_PASS;
     } else if (result_code & CONVERGENCE_TEST_PASS) {
       // gradient contains zero, hessian test is inconclusive,
-      // but interval cannot be divided, so we save it for use later 
+      // but interval cannot be divided, so we save it for use later
       // if we want to try to analyze these intervals in more detail.
       sresults.hessian_test_inconclusive.push_back(y_i);
     } else {
@@ -355,8 +379,37 @@ private:
 
   vector<y_interval_t> finalize_minimizers_with_value_test(
       NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_i, params_t const &params,
-      vector<bool> &dims_converged, size_t &result_code, results_t &sresults) {
+      vector<bool> const &dims_converged, size_t &result_code, results_t &sresults) {
     vector<y_interval_t> candidate_intervals;
+    if ((result_code & GRADIENT_TEST_FAIL) |
+        (result_code & HESSIAN_TEST_LOCAL_MAX)) {
+      // gradient test OR hessian test failed
+      // do nothing :)
+    } else if ((result_code & HESSIAN_TEST_LOCAL_MIN)) {
+      // gradient test and hessian test passed!
+      // hessian is SPD -> h(x) on interval is convex
+      y_interval_t y_res =
+          narrow_via_bisection(t, x, y_i, params, dims_converged);
+      result_code |= CONVERGENCE_TEST_PASS;
+      // we need to narrow and update the bounds
+      interval_t h_res = m_objective.value(t, x, y_i, params);
+      if (h_res.lower() >= sresults.optima_upper_bound) {
+        result_code |= VALUE_TEST_FAIL;
+      } else {
+        sresults.minima_intervals.push_back(y_i);
+      }
+    } else if (result_code & CONVERGENCE_TEST_PASS) {
+      // gradient contains zero, hessian test is inconclusive,
+      // but interval cannot be divided, so we save it for use later
+      // if we want to try to analyze these intervals in more detail.
+      sresults.hessian_test_inconclusive.push_back(y_i);
+    } else {
+      // gradient contains zero, hessian test is inconclusive,
+      // but the interval CAN be divided
+      // therefore, we choose to bisect the interval and
+      // continue the search.
+      candidate_intervals = bisect_interval(t, x, y_i, params, dims_converged);
+    }
     return candidate_intervals;
   }
   /**
