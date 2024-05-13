@@ -36,7 +36,7 @@ add_compile_definitions(
   DCO_AUTO_SUPPORT
   DCO_INTEROPERABILITY_BOOST_INTERVAL
   DCO_DISABLE_AVX2_WARNING
-  DCO_EXT_NO_EIGEN
+  #DCO_EXT_NO_EIGEN
 )
 
 add_compile_definitions(

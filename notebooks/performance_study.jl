@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.41
+# v0.19.42
 
 using Markdown
 using InteractiveUtils
@@ -344,17 +344,19 @@ let
 	p
 end
 
+# ╔═╡ 6c63de5c-d5d1-4a49-8fd2-daef511a5aec
+@bind x_in Slider(1.:0.001:6.0, show_value=true, default=1.0)
+
 # ╔═╡ 2e9360a6-7f0b-4f95-b1af-d76296511d33
 let c = 5.0, d = 5.0
-	x = 0:0.005:6.0
-	y = 0:0.005:6.0
+	x = 0:0.01:6.0
+	y = 0:0.01:6.0
 	fn(x, y) = (x-y)^2 + d*sin(c*y)
 	data = fn.(x,y')
-	plot(x, y, data, camera=(30, 30); plot_style_kwargs...)
+	p = plot(x, y, data, camera=(30, 30); plot_style_kwargs...)
+	vline!(p, [x_in])
+	p
 end
-
-# ╔═╡ 6c63de5c-d5d1-4a49-8fd2-daef511a5aec
-@bind x_in Slider(1.:0.001:12.0, show_value=true, default=1.0)
 
 # ╔═╡ bf21d26d-7c6d-4fe8-9343-19dc658b3275
 let x = x_in
@@ -365,6 +367,12 @@ let x = x_in
 	hline!(p, [0., 1.0])
 	ylims!(p, (-2, 2))
 end
+
+# ╔═╡ 07179d60-d344-41e2-a1bd-27f54847854b
+1/sqrt(2)
+
+# ╔═╡ 83582a22-5d49-44ec-8ce0-f3628661a0ba
+sqrt(2)/2
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1629,5 +1637,7 @@ version = "1.4.1+1"
 # ╠═2e9360a6-7f0b-4f95-b1af-d76296511d33
 # ╠═6c63de5c-d5d1-4a49-8fd2-daef511a5aec
 # ╠═bf21d26d-7c6d-4fe8-9343-19dc658b3275
+# ╠═07179d60-d344-41e2-a1bd-27f54847854b
+# ╠═83582a22-5d49-44ec-8ce0-f3628661a0ba
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

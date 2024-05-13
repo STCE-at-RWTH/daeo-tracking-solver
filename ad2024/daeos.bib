@@ -83,12 +83,12 @@
   date = {2023-05-09},
   eprint = {2305.05288},
   eprinttype = {arxiv},
-  eprintclass = {math},
   url = {http://arxiv.org/abs/2305.05288},
   urldate = {2024-04-19},
   abstract = {We are considering differential-algebraic equations with embedded optimization criteria (DAEOs) in which the embedded optimization problem is solved by global optimization. This actually leads to differential inclusions for cases in which there are multiple global optimizer at the same time. Jump events from one global optimum to another result in nonsmooth DAEs and thus reduction of the convergence order of the numerical integrator to first-order. Implementation of event detection and location as introduced in this work preserves the higher-order convergence behavior of the integrator. This allows to compute discrete tangents and adjoint sensitivities for optimal control problems.},
   pubstate = {preprint},
   keywords = {90C26 49L20 34A36,I.6.1,I.6.3,Mathematics - Dynamical Systems,Mathematics - Optimization and Control},
+  annotation = {Will appear in Optimization Methods and Software.},
   file = {/home/fleming/snap/zotero-snap/common/Zotero/storage/UQDTLLIX/Deussen et al. - 2023 - Numerical simulation of differential-algebraic equ.pdf;/home/fleming/snap/zotero-snap/common/Zotero/storage/Y2H5VJH6/2305.html}
 }
 
@@ -190,6 +190,36 @@
   abstract = {In this paper we shed more light on determinants of interval matrices. Computing the exact bounds on a determinant of an interval matrix is an NP-hard problem. Therefore, attention is first paid to approximations. NP-hardness of both relative and absolute approximation is proved. Next, methods computing verified enclosures of interval determinants and their possible combination with preconditioning are discussed. A new method based on Cramer's rule was designed. It returns similar results to the state-of-the-art method, however, it is less consuming regarding computational time. As a byproduct, the Gerschgorin circles were generalized for interval matrices. New results about classes of interval matrices with polynomially computable tasks related to determinant are proved (symmetric positive definite matrices, class of matrices with identity midpoint matrix, tridiagonal H-matrices). The mentioned methods were exhaustively compared for random general and symmetric matrices.},
   keywords = {Mathematics - Numerical Analysis},
   file = {/home/fleming/snap/zotero-snap/common/Zotero/storage/77V8MTU8/Horáček et al. - 2018 - Determinants of Interval Matrices.pdf;/home/fleming/snap/zotero-snap/common/Zotero/storage/CJV7JJQE/1809.html}
+}
+
+@article{kalmanLevelingLagrangeAlternate2009,
+  title = {Leveling with {{Lagrange}}: {{An Alternate View}} of {{Constrained Optimization}}},
+  shorttitle = {Leveling with {{Lagrange}}},
+  author = {Kalman, Dan},
+  date = {2009-06},
+  journaltitle = {Mathematics Magazine},
+  shortjournal = {Mathematics Magazine},
+  volume = {82},
+  number = {3},
+  pages = {186--196},
+  issn = {0025-570X, 1930-0980},
+  doi = {10.1080/0025570X.2009.11953617},
+  url = {https://www.tandfonline.com/doi/full/10.1080/0025570X.2009.11953617},
+  urldate = {2024-05-08},
+  langid = {english}
+}
+
+@article{kichlerSobolevPruning2023,
+  title = {Towards {{Sobolev Pruning}}},
+  author = {Kichler, Neil and Afghan, Sher and Naumann, Uwe},
+  date = {2023},
+  publisher = {[object Object]},
+  doi = {10.48550/ARXIV.2312.03510},
+  url = {https://arxiv.org/abs/2312.03510},
+  urldate = {2024-05-13},
+  abstract = {The increasing use of stochastic models for describing complex phenomena warrants surrogate models that capture the reference model characteristics at a fraction of the computational cost, foregoing potentially expensive Monte Carlo simulation. The predominant approach of fitting a large neural network and then pruning it to a reduced size has commonly neglected shortcomings. The produced surrogate models often will not capture the sensitivities and uncertainties inherent in the original model. In particular, (higher-order) derivative information of such surrogates could differ drastically. Given a large enough network, we expect this derivative information to match. However, the pruned model will almost certainly not share this behavior.  In this paper, we propose to find surrogate models by using sensitivity information throughout the learning and pruning process. We build on work using Interval Adjoint Significance Analysis for pruning and combine it with the recent advancements in Sobolev Training to accurately model the original sensitivity information in the pruned neural network based surrogate model. We experimentally underpin the method on an example of pricing a multidimensional Basket option modelled through a stochastic differential equation with Brownian motion. The proposed method is, however, not limited to the domain of quantitative finance, which was chosen as a case study for intuitive interpretations of the sensitivities. It serves as a foundation for building further surrogate modelling techniques considering sensitivity information.},
+  version = {2},
+  keywords = {Computational Finance (q-fin.CP),FOS: Computer and information sciences,FOS: Economics and business,Machine Learning (cs.LG)}
 }
 
 @report{leppkesDerivativeCodeOverloading2016,
@@ -360,6 +390,29 @@
   file = {/home/fleming/snap/zotero-snap/common/Zotero/storage/B4RN9CGE/Ritschel et al. - 2018 - An algorithm for gradient-based dynamic optimizati.pdf}
 }
 
+@book{sundaramFirstCourseOptimization1996,
+  title = {A First Course in Optimization Theory},
+  author = {Sundaram, Rangarajan K.},
+  date = {1996},
+  publisher = {Cambridge University Press},
+  location = {Cambridge ; New York},
+  isbn = {978-0-521-49719-0 978-0-521-49770-1},
+  pagetotal = {357},
+  keywords = {Mathematical optimization,Programming (Mathematics)}
+}
+
+@incollection{sundaramInequalityConstraintsTheorem1996,
+  title = {Inequality {{Constraints}} and the {{Theorem}} of {{Kuhn}} and {{Tucker}}},
+  booktitle = {A First Course in Optimization Theory},
+  author = {Sundaram, Rangarajan K.},
+  date = {1996},
+  pages = {145--171},
+  publisher = {Cambridge University Press},
+  location = {Cambridge ; New York},
+  isbn = {978-0-521-49719-0 978-0-521-49770-1},
+  keywords = {Mathematical optimization,Programming (Mathematics)}
+}
+
 @article{wachterImplementationInteriorpointFilter2006,
   title = {On the Implementation of an Interior-Point Filter Line-Search Algorithm for Large-Scale Nonlinear Programming},
   author = {Wächter, Andreas and Biegler, Lorenz T.},
@@ -374,4 +427,15 @@
   url = {http://link.springer.com/10.1007/s10107-004-0559-y},
   urldate = {2024-04-26},
   langid = {english}
+}
+
+@book{walshMethodsOptimization1975,
+  title = {Methods of Optimization},
+  author = {Walsh, G. R.},
+  date = {1975},
+  publisher = {Wiley},
+  location = {London ; New York},
+  isbn = {978-0-471-91922-3},
+  pagetotal = {200},
+  keywords = {Mathematical optimization}
 }

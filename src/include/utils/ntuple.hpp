@@ -4,12 +4,12 @@
 
 #include <tuple>
 
-template <std::size_t N, typename T> struct tuple_repeattype {
+template <std::size_t N, typename T> struct ntuple_detail {
   template <typename... Ts>
-  using type = typename tuple_repeattype<N - 1, T>::template type<T, Ts...>;
+  using type = typename ntuple_detail<N - 1, T>::template type<T, Ts...>;
 };
 
-template <typename T> struct tuple_repeattype<0, T> {
+template <typename T> struct ntuple_detail<0, T> {
   template <typename... Ts> using type = typename std::tuple<Ts...>;
 };
 
@@ -17,6 +17,6 @@ template <typename T> struct tuple_repeattype<0, T> {
  * @brief Tuple of `N` items of type `T`.
  */
 template <std::size_t N, typename T>
-using ntuple = typename tuple_repeattype<N, T>::template type<>;
+using ntuple = typename ntuple_detail<N, T>::template type<>;
 
 #endif

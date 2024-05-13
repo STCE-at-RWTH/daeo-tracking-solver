@@ -18,20 +18,18 @@ using suggested_interval_policies = boost::numeric::interval_lib::policies<
 
 enum BNBOptimizerMode{
   FIND_ALL_LOCAL_MINIMIZERS,
-  FIND_ONLY_GLOBAL_MINIMIZER,
-  FIND_ALL_SADDLE_POINTS
+  FIND_ONLY_GLOBAL_MINIMIZER
 };
 
 template <typename NUMERIC_T> struct BNBOptimizerSettings {
   BNBOptimizerMode MODE = FIND_ALL_LOCAL_MINIMIZERS;
   std::size_t MAXITER = 100'000;
   std::size_t MAX_REFINE_ITER = 1'000;
-  std::size_t NUM_EQUALITY_CONSTRAINTS = 0;
 
   NUMERIC_T TOL_Y = 1.0e-8;
-
-  bool OPTIMIZING_WITH_EQUALITY_CONSTRAINT = false;
+  
   bool LOGGING_ENABLED = true;
+  bool RETEST_CRITICAL_POINTS = false;
 };
 
 template <typename NUMERIC_T> struct DAEOSolverSettings {

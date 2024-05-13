@@ -61,8 +61,8 @@ public:
    * @brief Type of the local optimizer.
    */
   using optimizer_t =
-      BNBOptimizer<OBJECTIVE, NUMERIC_T,
-                        suggested_interval_policies<NUMERIC_T>, YDIMS, NPARAMS>;
+      BNBOptimizer<OBJECTIVE, NUMERIC_T, suggested_interval_policies<NUMERIC_T>,
+                   YDIMS, NPARAMS>;
 
   /**
    * @brief Type for an optimizer of the objective function.
@@ -93,30 +93,30 @@ public:
                      BNBOptimizerSettings<NUMERIC_T> &t_opt_settings,
                      DAEOSolverSettings<NUMERIC_T> &t_global_settings)
       : m_xprime(t_xprime), m_objective(t_objective),
-        settings(t_global_settings),
-        m_optimizer(t_objective, y_t{settings.y0_min}, y_t{settings.y0_max},
+        m_settings(t_global_settings),
+        m_optimizer(t_objective, y_t{m_settings.y0_min}, y_t{m_settings.y0_max},
                     t_opt_settings) {}
 
-  vector<solution_state_t> solve_daeo(NUMERIC_T t, NUMERIC_T t_end,
-                                      NUMERIC_T dt, NUMERIC_T x0,
-                                      params_t const &params,
-                                      std::string tag = "") {
+  template <typename DRIFT>
+  vector<solution_state_t>
+  solve_daeo(NUMERIC_T t, NUMERIC_T t_end, NUMERIC_T dt, NUMERIC_T x0,
+             params_t const &params, DRIFT drift, std::string tag = "") {
     using clock = std::chrono::high_resolution_clock;
     vector<solution_state_t> solution_trajectory;
     DAEOSolverLogger logger(tag);
-    if (settings.LOGGING_ENABLED) {
+    if (m_settings.LOGGING_ENABLED) {
       logger.log_computation_begin(clock::now(), 0, t, dt, x0);
     }
     fmt::println("Starting to solve DAEO at t={:.4e}, x0={:.4e}, and dt={:.4e}",
                  t, x0, dt);
-    typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(
-        t, x0, params, settings.ONLY_GLOBAL_OPTIMIZATION);
+    typename optimizer_t::results_t opt_res =
+        m_optimizer.find_minima_at(t, x0, params);
     fmt::println("  BNB optimizer yields candidates for y at {:::.4e}",
                  opt_res.minima_intervals);
     solution_state_t current, next;
     current = solution_state_from_optimizer_results(t, x0, opt_res, params);
     vector<y_t> dy;
-    if (settings.LOGGING_ENABLED) {
+    if (m_settings.LOGGING_ENABLED) {
       logger.log_global_optimization(clock::now(), 0, current.t, current.x,
                                      current.y, current.i_star);
     }
@@ -136,16 +136,15 @@ public:
       // we have not found an event in this time step (yet).
       bool event_found = false;
       next = integrate_daeo(current, dt, params);
-      if (iterations_since_search == settings.SEARCH_FREQUENCY) {
-        opt_res = m_optimizer.find_minima_at(next.t, next.x, params,
-                                             settings.ONLY_GLOBAL_OPTIMIZATION);
+      if (iterations_since_search == m_settings.SEARCH_FREQUENCY) {
+        opt_res = m_optimizer.find_minima_at(next.t, next.x, params);
         if (opt_res.minima_intervals.size() == 0) {
           fmt::println("*** SCREAMING CRYING VOMITING ON THE FLOOR ***");
           break;
         }
         solution_state_t from_opt = solution_state_from_optimizer_results(
             next.t, next.x, opt_res, params);
-        if (settings.LOGGING_ENABLED) {
+        if (m_settings.LOGGING_ENABLED) {
           logger.log_global_optimization(clock::now(), iter, from_opt.t,
                                          from_opt.x, from_opt.y,
                                          from_opt.i_star);
@@ -164,46 +163,33 @@ public:
               "  Optimizer may have vanished, from {:d} to {:d} optimizers.",
               next.n_local_optima(), from_opt.n_local_optima());
           fmt::println("  Reordering optima to match {:::.4e}", from_opt.y);
-          if (settings.LINEARIZE_OPTIMIZER_DRIFT) {
+          if (m_settings.LINEARIZE_OPTIMIZER_DRIFT) {
             vector<NUMERIC_T> neighborhoods(from_opt.n_local_optima());
-            std::transform(
-                from_opt.y.begin(), from_opt.y.end(), neighborhoods.begin(),
-                [&h = (this->m_objective), t = next.t, x = next.x, &p = params,
-                 &settings = (this->settings)](y_t y) -> NUMERIC_T {
-                  y_t dhdy = h.grad_y(t, x, y, p);
-                  // take one newton step
-                  y_t to_zero = dhdy.binaryExpr(
-                      y,
-                      [](auto dy, auto y_i) -> auto{ return y_i / dy; });
-                  // scale by appropraite setting
-                  return to_zero.norm() * settings.EVENT_DRIFT_COEFF;
+            std::transform(from_opt.y.begin(), from_opt.y.end(),
+                           neighborhoods.begin(), [&](const auto &y) -> auto{
+                  return drift(from_opt.t, from_opt.x, y, params);
                 });
             next = correct_optimizer_permutation(from_opt, next, neighborhoods);
           } else {
             next = correct_optimizer_permutation(
-                from_opt, next, settings.EVENT_DRIFT_COEFF * dt);
+                from_opt, next, m_settings.EVENT_DRIFT_COEFF * dt);
           }
           fmt::println("               new order is {:::.4e}", next.y);
         } else {
           fmt::println("  Optimizer emerged.");
           fmt::println("  Reordered optima to match {:::.4e}", next.y);
-          if (settings.LINEARIZE_OPTIMIZER_DRIFT) {
+          if (m_settings.LINEARIZE_OPTIMIZER_DRIFT) {
             vector<NUMERIC_T> neighborhoods(from_opt.n_local_optima());
             std::transform(
-                from_opt.y.begin(), from_opt.y.end(), neighborhoods.begin(),
-                [&h = (this->m_objective), t = next.t, x = next.x, &p = params,
-                 &settings = (this->settings)](y_t y) -> NUMERIC_T {
-                  y_t dhdy = h.grad_y(t, x, y, p);
-                  y_t to_zero = dhdy.binaryExpr(
-                      y,
-                      [](auto dy, auto y_i) -> auto{ return y_i - y_i / dy; });
-                  return to_zero.norm() * settings.EVENT_DRIFT_COEFF;
+                from_opt.y.begin(), from_opt.y.end(),
+                neighborhoods.begin(), [&](const auto &y) -> auto{
+                  return drift(from_opt.t, from_opt.x, y, params);
                 });
             from_opt =
                 correct_optimizer_permutation(next, from_opt, neighborhoods);
           } else {
             from_opt = correct_optimizer_permutation(
-                next, from_opt, settings.EVENT_DRIFT_COEFF * dt);
+                next, from_opt, m_settings.EVENT_DRIFT_COEFF * dt);
           }
           fmt::println("               new order is {:::.4e}", from_opt.y);
         }
@@ -211,7 +197,7 @@ public:
         // check for event and correct any error that may have accumulated
         // from the local optimizer tracking
         event_found = (next.y_star() - from_opt.y_star()).norm() >
-                      settings.EVENT_DETECTION_EPS;
+                      m_settings.EVENT_DETECTION_EPS;
         if (event_found)
           fmt::println("  event found by gopt");
         next = std::move(from_opt);
@@ -228,7 +214,7 @@ public:
       // as long as the lost/gained optimizers are _not_ the global optimizer
       // at either end of the time step, this could be relaxed.
 
-      if (settings.EVENT_DETECTION_AND_CORRECTION && event_found) {
+      if (m_settings.EVENT_DETECTION_AND_CORRECTION && event_found) {
         fmt::println("  Detected global optimzer switch between (t={:.6e}, "
                      "y={::.4e}) and (t={:.6e}, y={::.4e})",
                      current.t, current.y_star(), next.t, next.y_star());
@@ -239,7 +225,7 @@ public:
         fmt::println("    Event at t={:.6e}, x={:.4e}", computed_event.t,
                      computed_event.x);
         NUMERIC_T dt_event = computed_event.t - current.t;
-        if (settings.LOGGING_ENABLED) {
+        if (m_settings.LOGGING_ENABLED) {
           dy = compute_dy(current.y, computed_event.y);
           logger.log_event_correction(
               clock::now(), iter, computed_event.t, dt_event, computed_event.x,
@@ -261,7 +247,7 @@ public:
         next = integrate_daeo(computed_event, dt_grid, params);
       }
       // we don't need to handle events, we can move on.
-      if (settings.LOGGING_ENABLED) {
+      if (m_settings.LOGGING_ENABLED) {
         dy = compute_dy(current.y, next.y);
         logger.log_time_step(clock::now(), iter, next.t, dt, next.x,
                              next.x - current.x, next.y, dy, next.i_star);
@@ -270,7 +256,7 @@ public:
       iter++;
       iterations_since_search++;
     }
-    if (settings.LOGGING_ENABLED) {
+    if (m_settings.LOGGING_ENABLED) {
       logger.log_computation_end(clock::now(), iter, current.t, current.x,
                                  current.y, current.i_star);
     }
@@ -280,7 +266,7 @@ public:
 private:
   DAEOWrappedFunction<XPRIME> m_xprime;
   DAEOWrappedFunction<OBJECTIVE> m_objective;
-  DAEOSolverSettings<NUMERIC_T> settings;
+  DAEOSolverSettings<NUMERIC_T> const m_settings;
   optimizer_t m_optimizer;
 
   /**
@@ -503,7 +489,7 @@ private:
     Eigen::VectorX<NUMERIC_T> G, diff;
     Eigen::MatrixX<NUMERIC_T> jacG;
     size_t iter = 0;
-    while (iter < settings.MAX_NEWTON_ITERATIONS) {
+    while (iter < m_settings.MAX_NEWTON_ITERATIONS) {
       G = trapezoidal_rule(start, next, dt, p);
       jacG = trapezoidal_rule_jacobian(next, dt, p);
       diff = jacG.colPivHouseholderQr().solve(G);
@@ -512,7 +498,7 @@ private:
         next.y[i] =
             next.y[i] - diff(Eigen::seqN(1 + i * start.ydims(), start.ydims()));
       }
-      if (diff.norm() < settings.NEWTON_EPS) {
+      if (diff.norm() < m_settings.NEWTON_EPS) {
         break;
       }
       iter++;
@@ -577,14 +563,14 @@ private:
     dt_guess = (right.t - left.t) / 2;
     size_t iter = 0;
     bool escaped = false;
-    while (iter < settings.MAX_NEWTON_ITERATIONS) {
+    while (iter < m_settings.MAX_NEWTON_ITERATIONS) {
       // integrate to t_guess
       guess = integrate_daeo(left, dt_guess, p);
       // evaluate event function
       H = event_function(guess.t, guess.x, guess.y[left.i_star],
                          guess.y[right.i_star], p);
 
-      if (fabs(H) < settings.NEWTON_EPS) {
+      if (fabs(H) < m_settings.NEWTON_EPS) {
         break;
       }
       // only scream once
@@ -637,7 +623,7 @@ private:
     // Bisection gains one power of 2 every iteration
     // we should never need more iterations than for the worst-case newton
     // solver here
-    while (iter < settings.MAX_NEWTON_ITERATIONS) {
+    while (iter < m_settings.MAX_NEWTON_ITERATIONS) {
       delta = delta / 2; // Bisect.
       guess = integrate_daeo(left, dt_guess, p);
       H = event_function(guess.t, guess.x, guess.y[left.i_star],
@@ -645,7 +631,7 @@ private:
       // maybe we need to choose a different tolerance for bisection, but using
       // the same number of digits of accuracy for bisection and newton seems to
       // work.
-      if (fabs(H) < settings.NEWTON_EPS) {
+      if (fabs(H) < m_settings.NEWTON_EPS) {
         break;
       } else if (H < 0) {
         dt_guess += delta;

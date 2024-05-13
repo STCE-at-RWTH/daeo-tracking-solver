@@ -13,6 +13,7 @@ using boost::numeric::square;
 #include "fmt/chrono.h"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
+#include "utils/propagate_dynamic.hpp"
 #include "utils/sylvesters_criterion.hpp"
 
 template <typename T>
@@ -31,5 +32,10 @@ int main(int argc, char *argv[]) {
   Eigen::VectorXd v3 = v2.binaryExpr(
       v1, [](auto y, auto z) -> auto{ return y; });
   fmt::println("{::.4e}", v3);
+  Eigen::MatrixXd v4;
+  v4 = Eigen::MatrixXd::Random(10, 10);
+  fmt::println("{:.4e}", bad_determinant(v4));
+  fmt::println("{:d}", 4 & 1);
+  fmt::println("{:d}", propagate_dynamic<1, 2>::value);
   return 0;
 }
