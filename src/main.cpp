@@ -101,7 +101,7 @@ void griewank_example_event_tolerance_study() {
   };
 
   auto h = [](const auto t, const auto x, const auto &y, const auto &p) -> auto{
-    return (pow(x - y(0), 2) + p(0) * sin(p(1) * y(0)));
+    return (pow((-y(0)) + x, 2) + p(0) * sin(p(1) * y(0)));
   };
 
   auto d1 = [](auto t, auto x, auto const &y, auto const &p) constexpr -> auto{
@@ -110,7 +110,7 @@ void griewank_example_event_tolerance_study() {
 
   auto d2 = [=](auto t, auto x, auto const &y, auto const &p) -> auto{
     auto m = 2 - 25 * sin(5 * y(0));
-    auto dx = f(t, x, y, p)*0.0001;
+    auto dx = f(t, x, y, p) * 0.0001;
     return (2 * m / dx);
   };
 
@@ -125,7 +125,8 @@ void griewank_example_event_tolerance_study() {
   solver_t solver4(f, h, opt_s, settings_hightol_noevents);
 
   solver1.solve_daeo(0., 2.0, 0.0001, 1.0, p, d1, "griewank_example_lowtol");
-  //solver2.solve_daeo(0., 2.0, 0.0001, 1.0, p, d2, "griewank_example_lowtol_drift_est");
+  // solver2.solve_daeo(0., 2.0, 0.0001, 1.0, p, d2,
+  // "griewank_example_lowtol_drift_est");
 }
 
 void simple_example_perf_study(int N) {
@@ -163,7 +164,10 @@ void simple_example_perf_study(int N) {
     double dt = 0.25 * pow(10.0, -i);
     solver_t solver(f, h, opt_s, solver_s);
     solver.solve_daeo(
-        0, 1, dt, 1.0, p, [](auto t, auto x, auto const &y, auto const &p) constexpr -> auto{ return 1.0; },
+        0, 1, dt, 1.0, p,
+        [](auto t, auto x, auto const &y, auto const &p) constexpr -> auto{
+          return 1.0;
+        },
         fmt::format("se_tracking_10_minus{:d}", i));
   }
 
@@ -180,7 +184,10 @@ void simple_example_perf_study(int N) {
     double dt = 0.25 * pow(10.0, -i);
     solver_t solver(f, h, opt_s, solver_s);
     solver.solve_daeo(
-        0, 1, dt, 1.0, p, [](auto t, auto x, auto const &y, auto const &p) constexpr -> auto{ return 1.0; },
+        0, 1, dt, 1.0, p,
+        [](auto t, auto x, auto const &y, auto const &p) constexpr -> auto{
+          return 1.0;
+        },
         fmt::format("se_tracking_noevents_10_minus{:d}", i));
   }
 
@@ -195,7 +202,10 @@ void simple_example_perf_study(int N) {
     double dt = 0.25 * pow(10.0, -i);
     solver_t solver(f, h, opt_s, solver_s);
     solver.solve_daeo(
-        0, 1, dt, 1.0, p, [](auto t, auto x, auto const &y, auto const &p) constexpr -> auto{ return 1.0; },
+        0, 1, dt, 1.0, p,
+        [](auto t, auto x, auto const &y, auto const &p) constexpr -> auto{
+          return 1.0;
+        },
         fmt::format("se_tracking_onlyglobal_10_minus{:d}", i));
   }
 }
