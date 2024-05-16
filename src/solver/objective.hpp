@@ -151,7 +151,7 @@ public:
     return d2hdy2;
   }
 
-  template <typename NUMERIC_T, typename XY_ACTIVE_T, typename Y_ACTIVE_T>
+  template <typename NUMERIC_T, typename XY_ACTIVE_T>
   Eigen::Vector<XY_ACTIVE_T, YDIMS>
   d2dxdy(NUMERIC_T const t, XY_ACTIVE_T const x,
          Eigen::Vector<XY_ACTIVE_T, YDIMS> const &y,

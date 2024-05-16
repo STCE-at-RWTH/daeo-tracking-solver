@@ -94,8 +94,8 @@ public:
                      DAEOSolverSettings<NUMERIC_T> &t_global_settings)
       : m_xprime(t_xprime), m_objective(t_objective),
         m_settings(t_global_settings),
-        m_optimizer(t_objective, y_t{m_settings.y0_min}, y_t{m_settings.y0_max},
-                    t_opt_settings) {}
+        m_optimizer(t_objective, t_opt_settings,
+                    typename optimizer_t::y_interval_t{interval_t{-10, 10}}) {}
 
   template <typename DRIFT>
   vector<solution_state_t>
@@ -165,8 +165,9 @@ public:
           fmt::println("  Reordering optima to match {:::.4e}", from_opt.y);
           if (m_settings.LINEARIZE_OPTIMIZER_DRIFT) {
             vector<NUMERIC_T> neighborhoods(from_opt.n_local_optima());
-            std::transform(from_opt.y.begin(), from_opt.y.end(),
-                           neighborhoods.begin(), [&](const auto &y) -> auto{
+            std::transform(
+                from_opt.y.begin(), from_opt.y.end(),
+                neighborhoods.begin(), [&](const auto &y) -> auto{
                   return drift(from_opt.t, from_opt.x, y, params);
                 });
             next = correct_optimizer_permutation(from_opt, next, neighborhoods);
@@ -265,7 +266,8 @@ public:
 
 private:
   DAEOWrappedFunction<XPRIME, NUMERIC_T, interval_t, YDIMS, NPARAMS> m_xprime;
-  DAEOWrappedFunction<OBJECTIVE, NUMERIC_T, interval_t, YDIMS, NPARAMS> m_objective;
+  DAEOWrappedFunction<OBJECTIVE, NUMERIC_T, interval_t, YDIMS, NPARAMS>
+      m_objective;
   DAEOSolverSettings<NUMERIC_T> const m_settings;
   optimizer_t m_optimizer;
 

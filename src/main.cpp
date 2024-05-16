@@ -108,12 +108,6 @@ void griewank_example_event_tolerance_study() {
     return 1.0;
   };
 
-  auto d2 = [=](auto t, auto x, auto const &y, auto const &p) -> auto{
-    auto m = 2 - 25 * sin(5 * y(0));
-    auto dx = f(t, x, y, p) * 0.0001;
-    return (2 * m / dx);
-  };
-
   // using optimizer_t = BNBLocalOptimizer<decltype(h), T,
   // suggested_solver_policies<T>, NUM_Y_DIMS, NUM_PARAMS>;
   using solver_t = DAEOTrackingSolver<decltype(f), decltype(h), double, 1, 2>;
@@ -123,8 +117,14 @@ void griewank_example_event_tolerance_study() {
   solver_t solver2(f, h, opt_s, settings_lowtol_drift);
   solver_t solver3(f, h, opt_s, settings_hightol);
   solver_t solver4(f, h, opt_s, settings_hightol_noevents);
+  double dt = 0.0001;
 
-  solver1.solve_daeo(0., 2.0, 0.0001, 1.0, p, d1, "griewank_example_lowtol");
+  auto d2 = [=](auto t, auto x, auto const &y, auto const &p) -> auto{
+    auto m = 2 - 25 * sin(5 * y(0));
+    auto dx = f(t, x, y, p) * dt;
+    return (2 * dx / m);
+  };
+  solver1.solve_daeo(0., 1.5, 0.0001, 1.0, p, d1, "griewank_example_lowtol");
   // solver2.solve_daeo(0., 2.0, 0.0001, 1.0, p, d2,
   // "griewank_example_lowtol_drift_est");
 }

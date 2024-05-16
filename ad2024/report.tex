@@ -67,7 +67,7 @@
 \addbibresource{daeos.bib}
 %\bibliographystyle{siam}
 \usepackage{ltexpprt}
-\usepackage{hyperref}
+\usepackage{hyperref, cleveref}
 
 \newcommand{\abs}[1]{\ensuremath{\left|#1\right|}}
 \DeclareMathOperator*{\argmin}{\arg\min}
@@ -158,7 +158,7 @@ This work develops a sequential solver for DAEOs and builds upon the theoretical
 
 Given certain assumed properties of the DAEO, the movement of these local optimizers can be tracked through a time step by appending the first-order optimality conditions (gradient is zero) to the equations solved by the integrator component of the solver. Solving these equations is significantly less expensive than running a global optimizer at every time step, and it is possible to correct for possible "jump events", which occur when the identity of the global optimizer changes \textit{during} a time step. If left unaccounted for, these jump events will reduce the order of convergence of the solution to the DAE by 1 \cite{deussenNumericalSimulationDifferentialalgebraic2023, mannshardtOnestepMethodsAny1978}.
 
-The solver developed in this work performs both local optimizer tracking and jump event correction. The numerical experiments performed in Section \ref{section:numerical-experiments} demonstrate the correctness of local optimizer tracking and the performance improvement over a sequential DAEO solver without local optimizer tracking.
+The solver developed in this work performs both local optimizer tracking and jump event correction. The numerical experiments performed in \Cref{section:numerical-experiments} demonstrate the correctness of local optimizer tracking and the performance improvement over a sequential DAEO solver without local optimizer tracking.
 % can't back this up, not without a comparison to an NLP solver.
 % These processes are much more computationally efficient than solving a (potentially) large non-linear programming problem at each time step.
 
@@ -227,7 +227,7 @@ In both cases, integrating the differential part of \eqref{eq:daeo-ivp} from $t_
 \end{equation}
 Therefore, the choice of global optimizer $y^\star$ exactly at $t_{e_j}$ is inconsequential. This renders the first case trivial, since there is no change in the identity of $y^\star$ after the event.
 
-The second case, however, is relevant for the correct solution of DAEOs. Between each $t_{e_j}$, the DAEO \eqref{eq:daeo-ivp} can be treated as an IVP, with the extra constraint that $\partial_{y} h(x(t), y^\star(t)) = 0$ \cite{deussenSeparation}.
+The second case, however, is relevant for the correct solution of DAEOs. Between each $t_{e_j}$, the DAEO \eqref{eq:daeo-ivp} can be treated as an IVP, with the extra constraint that $\partial_{y} h(x(t), y^\star(t)) = 0$ \cite{deussenSubdomainSeparabilityGlobal2023}.
 
 \begin{assumption} 
 	\label{assume:events-transversal}
@@ -260,7 +260,7 @@ A sequential DAEO solver must first locate the global optimizer $y^\star$ of $h(
 	\label{assume:twice-lipschitz}
 	Both $f$ and $h$ are twice Lipschitz continuous with respect to $(x(t), y(t))$.
 \end{assumption}
-Optimality conditions for $h(x(t), y)$ follow from \ref{assume:twice-lipschitz}
+Optimality conditions for $h(x(t), y)$ follow from \Cref{assume:twice-lipschitz}
 \begin{equation}
 	\label{eq:optimality-conditions}
 	\begin{aligned}
@@ -277,7 +277,7 @@ An interval $[y] \in \bbI\bbR^{n_y} = \left[\ubar y_i, \bar y_i\right]$ bounds a
 	
 	An interval evaluation of a function $\left[\ubar{y},\bar{y}\right] = f(\left[\ubar x, \bar x\right])$ must yield an interval that contains all pointwise evaluations $f(x)\,\forall\,x\in\left[\ubar x, \bar x\right]$.
 \end{Definition}
-The condition in \ref{def:interval-arith} means that a correct implementation of interval arithmetic need not provide the smallest possible result $\left[\ubar y, \bar y\right]$\cite{hickeyIntervalArithmeticPrinciples2001}. However, the result $[\ubar y, \bar y] = f(\left[\ubar x, \bar x\right])$ \textit{must} contain all possible results of the interval evaluation. One such implementation is the Boost Interval library\cite{melquiondBoostIntervalLibrary2022}.
+The condition in \Cref{def:interval-arith} means that a correct implementation of interval arithmetic need not provide the smallest possible result $\left[\ubar y, \bar y\right]$\cite{hickeyIntervalArithmeticPrinciples2001}. However, the result $[\ubar y, \bar y] = f(\left[\ubar x, \bar x\right])$ \textit{must} contain all possible results of the interval evaluation. One such implementation is the Boost Interval library\cite{melquiondBoostIntervalLibrary2022}.
 
 Automatic differentiation uses the chain rule to compute derivatives of arbitrary functions by decomposing them into a sequence of basic arithmetic operations and their derivatives \cite{griewankEvaluatingDerivativesPrinciples2008}. Over the real numbers, forwards-mode AD of some function $g(x)$ would compute both $g$ and its first derivative $\partial_x g$. Over intervals, however, forwards-mode AD would compute an interval enclosure for $g(\left[x\right])$ and an interval enclosure of the derivative $\partial_xg(\left[x\right])$\cite{rallGlobalOptimizationUsing1985}. Reverse-mode AD is similarly effective. These interval gradients can be used to verify the first-order optimality conditions on $h$.
 
@@ -311,7 +311,7 @@ Unfortunately, computing the exact bounds of the interval determinant is an NP-h
 		\item Repeat for all remaining items in $\frS$.
 	\end{enumerate}
 \end{algorithm}
-This branch-and-bound algorithm locates all intervals $\left\{[y]^k\right\}$ that contain minimizers of $h(x, y)$ \cite{rallGlobalOptimizationUsing1985, deussenGlobalSearchLocal2020}. The user is able to configure a termination criterion for the interval-narrowing and interval-splitting steps by setting the minimum width of an interval that will be split or narrowed. This directly controls the error in the optimizer's output. The solutions in \ref{fig:easy-example-solution} and \ref{fig:complicated-example-solution} were computed with a termination threshold of $\mathrm{width}\left[\ubar y^k, \bar y^k\right] \leq 10^{-8}$.
+This branch-and-bound algorithm locates all intervals $\left\{[y]^k\right\}$ that contain minimizers of $h(x, y)$ \cite{rallGlobalOptimizationUsing1985, deussenGlobalSearchLocal2020}. The user is able to configure a termination criterion for the interval-narrowing and interval-splitting steps by setting the minimum width of an interval that will be split or narrowed. This directly controls the error in the optimizer's output. The solutions in \Cref{fig:easy-example-solution} and \Cref{fig:complicated-example-solution} were computed with a termination threshold of $\mathrm{width}\left[\ubar y^k, \bar y^k\right] \leq 10^{-8}$.
 
 \section{Time Stepping}
 The trapezoidal rule (a Runge-Kutta scheme of order 2 \cite{butcherNumericalMethodsOrdinary2008}) steps from time step $t^n$ to $t^{n+1}$ via the implicit formulation
@@ -389,9 +389,9 @@ Since there are no constraints on either $x$ or $y$ in \eqref{eq:the-easy-one}, 
 	\mathrm{minimize\ in\ } y:\,h\left(x(t), y\right)
 \end{equation*}
 
-A suitable local optimization algorithm will converge to one of the local optimizers. This result may be the global optimizer, but there is no way to know when the jump event occurs without a global optimizer. However, the branch-and-bound algorithm described in Algorithm \ref{algo:bnb-ia} finds both local optimizers.
+A suitable local optimization algorithm will converge to one of the local optimizers. This result may be the global optimizer, but there is no way to know when the jump event occurs without a global optimizer. However, the branch-and-bound algorithm described in \Cref{algo:bnb-ia} finds both local optimizers.
 
-\begin{figure}[h]
+\begin{figure}[tb]
 	\centering
 	\includegraphics[width=0.45\textwidth]{gfx/easy_daeo_solution.pdf}
 	\caption{The solution to \eqref{eq:the-easy-one} as computed by the solver both with and without event correction enabled. $x_{exact}(t)$ plots \eqref{eq:easy-daeo-solution}, and the vertical line is located at $t_{e_1}$. The data points $x_{ev}(t)$ and $x_{noev}(t)$ show the computed trajectory for $x(t)$ with and without events, respectively.  The event detection procedure generates an extra data point at $t={t_e}$ that lies on the boundary between two of the component IVPs in \eqref{eq:the-easy-one}. $\Delta t$ was set to $0.25$ for this computation.}

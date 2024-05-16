@@ -105,7 +105,7 @@ public:
       : settings{t_settings}, m_search_domain{t_domain}, m_objective{
                                                              t_objective} {};
 
-  void set_search_domain(y_interval_t const &t_new_domain) {
+  inline void set_search_domain(y_interval_t const &t_new_domain) {
     m_search_domain = t_new_domain;
   }
 
@@ -147,19 +147,7 @@ public:
     // one last check for the global.
     // am I saving any work with this? TBD.
     if (settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER) {
-      vector<y_interval_t> res;
-      NUMERIC_T h_max = std::numeric_limits<NUMERIC_T>::max();
-      interval_t h;
-      size_t i_star = 0;
-      for (size_t i = 0; i < sresults.minima_intervals.size(); i++) {
-        h = m_objective.value(t, x, sresults.minima_intervals[i], params);
-        if (h.upper() < h_max) {
-          h_max = h.upper();
-          i_star = i;
-        }
-      }
-      res.push_back(sresults.minima_intervals[i_star]);
-      sresults.minima_intervals = std::move(res);
+      filter_global_from_results(sresults, t, x, params);
     }
 
     auto comp_end = std::chrono::high_resolution_clock::now();
@@ -176,6 +164,29 @@ protected:
   process_interval(size_t tasknum, NUMERIC_T t, NUMERIC_T x,
                    y_interval_t const &y_i, params_t const &params,
                    results_t &sresults, BNBOptimizerLogger &logger) = 0;
+
+  /**
+   * @brief Reduce @c sresults.minima_intervals to only contain the global
+   * minimum.
+   * @param[inout] sresults The results struct to filter for the global minimum.
+   *
+   */
+  void filter_global_from_results(results_t &sresults, NUMERIC_T t, NUMERIC_T x,
+                                  params_t const &params) {
+    vector<y_interval_t> res;
+    NUMERIC_T h_max = std::numeric_limits<NUMERIC_T>::max();
+    interval_t h;
+    size_t i_star = 0;
+    for (size_t i = 0; i < sresults.minima_intervals.size(); i++) {
+      h = m_objective.value(t, x, sresults.minima_intervals[i], params);
+      if (h.upper() < h_max) {
+        h_max = h.upper();
+        i_star = i;
+      }
+    }
+    res.push_back(sresults.minima_intervals[i_star]);
+    sresults.minima_intervals = std::move(res);
+  }
   /**
    * @brief The objective function h(t, x, y; p) of which to find the minima.
    */
@@ -429,17 +440,8 @@ protected:
                            d2hdy2.rowwise(), dims_converged);
     }
     // take actions based upon test results.
-    vector<y_interval_t> candidate_intervals;
-    switch (this->settings.MODE) {
-    case FIND_ALL_LOCAL_MINIMIZERS:
-      candidate_intervals = finalize_minimizers_no_value_test(
-          t, x, y_i, params, dims_converged, result_code, sresults);
-      break;
-    case FIND_ONLY_GLOBAL_MINIMIZER:
-      candidate_intervals = finalize_minimizers_with_value_test(
-          t, x, y_i, params, dims_converged, result_code, sresults);
-      break;
-    }
+    vector<y_interval_t> candidate_intervals = finalize_minimizer_candidates(
+        t, x, y_i, params, dims_converged, result_code, sresults);
 
     if (this->settings.LOGGING_ENABLED) {
       logger.log_task_complete(clock::now(), tasknum, y_i, result_code);
@@ -448,12 +450,15 @@ protected:
     return candidate_intervals;
   }
 
-  vector<y_interval_t> finalize_minimizers_no_value_test(
+  vector<y_interval_t> finalize_minimizer_candidates(
       NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_i, params_t const &params,
       vector<bool> &dims_converged, size_t &result_code, results_t &sresults) {
     vector<y_interval_t> candidate_intervals;
-
-    if (result_code & (GRADIENT_TEST_FAIL | HESSIAN_TEST_LOCAL_MAX)) {
+    if (this->settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER &&
+        (result_code & VALUE_TEST_FAIL)) {
+      // if only searching for the global and the value test has been failed
+      // do nothing :)
+    } else if (result_code & (GRADIENT_TEST_FAIL | HESSIAN_TEST_LOCAL_MAX)) {
       // gradient test OR hessian test failed
       // do nothing :)
     } else if (result_code & HESSIAN_TEST_LOCAL_MIN) {
@@ -461,8 +466,20 @@ protected:
       // hessian is SPD -> h(x) on interval is convex
       y_interval_t y_res =
           this->narrow_via_bisection(t, x, y_i, params, dims_converged);
-      sresults.minima_intervals.push_back(y_res);
+
       result_code |= CONVERGENCE_TEST_PASS;
+      if (this->settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER) {
+        // if we are searching for ONLY the global minimizer
+        // we need to repeat the value test!
+        interval_t h_res = this->m_objective.value(t, x, y_i, params);
+        if (h_res.lower() >= sresults.optima_upper_bound) {
+          result_code |= VALUE_TEST_FAIL;
+        } else {
+          sresults.minima_intervals.push_back(y_res);
+        }
+      } else {
+        sresults.minima_intervals.push_back(y_res);
+      }
     } else if (result_code & CONVERGENCE_TEST_PASS) {
       // gradient contains zero, hessian test is inconclusive,
       // but interval cannot be divided, so we save it for use later
@@ -478,88 +495,49 @@ protected:
     }
     return candidate_intervals;
   }
-
-  vector<y_interval_t> finalize_minimizers_with_value_test(
-      NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_i, params_t const &p,
-      vector<bool> &dims_converged, size_t &result_code, results_t &sresults) {
-    vector<y_interval_t> candidate_intervals;
-    if (result_code &
-        (VALUE_TEST_FAIL | GRADIENT_TEST_FAIL | HESSIAN_TEST_LOCAL_MAX)) {
-      // value test OR gradient test OR hessian test failed
-    } else if ((result_code & HESSIAN_TEST_LOCAL_MIN)) {
-      // gradient test and hessian test passed!
-      y_interval_t y_res =
-          this->narrow_via_bisection(t, x, y_i, p, dims_converged);
-      result_code |= CONVERGENCE_TEST_PASS;
-
-      // we need to repeat the value test!
-      interval_t h_res = this->m_objective.value(t, x, y_i, p);
-      if (h_res.lower() >= sresults.optima_upper_bound) {
-        result_code |= VALUE_TEST_FAIL;
-      } else {
-        sresults.minima_intervals.push_back(y_res);
-      }
-
-    } else if (result_code & CONVERGENCE_TEST_PASS) {
-      // value test pass, gradient test pass, hessian test is inconclusive, but
-      // interval cannot be divided, so we save it for use later if we want to
-      // try to analyze these intervals in more detail.
-      sresults.hessian_test_inconclusive.push_back(y_i);
-    } else {
-      // gradient contains zero, hessian test is inconclusive,
-      // but the interval CAN be divided
-      // therefore, we choose to bisect the interval and
-      // continue the search.
-      candidate_intervals = this->bisect_interval(t, x, y_i, p, dims_converged);
-    }
-    return candidate_intervals;
-  }
 };
 
 // IDEA
 // we only really care about the behavior behind operator()
 // could we do something like this and then use L(...) to verify the hessian
 // test? could be worth a look!
-template <typename F, typename... G> struct constrained_opt_detail {
+template <typename F, typename G> struct constraint_detail {
   F f;
-  std::tuple<G...> g;
+  G g;
   template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
   auto L(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-         Eigen::Vector<T, PDIMS> const &p) const -> std::common_type_t<X, Y> {
-    auto idxs = Eigen::seq(1, Eigen::last);
-    auto L_res = f(t, x, y(idxs), p);
-    // will the compiler unroll this? maybe at O3?
-    for (size_t i = 0; i < sizeof...(G); i++) {
-      L_res += y(i) * g(t, x, y(idxs), p);
-    }
-    return L_res;
+         Eigen::Vector<T, PDIMS> const &p) const {
+    Eigen::Vector<Y, propagate_dynamic_v<YDIMS, YDIMS - 1>> y_slice(y.rows() -
+                                                                    1);
+    y_slice = y(Eigen::seq(1, Eigen::last));
+    return f(t, x, y_slice, p) + y(0) * g(t, x, y_slice, p);
   }
 
   template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
-  auto dLdy_sqr(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-                Eigen::Vector<T, PDIMS> const &p) const
-      -> std::common_type_t<X, Y> {
-    using res_t = std::common_type_t<X, Y>;
-    using dco_mode_t = dco::gt1s<res_t>;
+  auto norm_dLdy(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
+                Eigen::Vector<T, PDIMS> const &p) const {
+    // using res_t = decltype(L(t, x, y, p));
+    using dco_mode_t = dco::gt1s<Y>;
     using active_t = typename dco_mode_t::type;
-    std::common_type_t<X, Y> res{0};
     Eigen::Vector<active_t, YDIMS> y_active(y.rows());
     for (size_t i = 0; i < y.rows(); i++) {
       dco::value(y_active(i)) = y(i);
     }
-    for (size_t i = 0; i < y.rows(); i++) {
+    // "why" does this work?!
+    Eigen::Vector<Y, YDIMS> res(y.rows());
+    for (size_t i = 1; i < y.rows(); i++) {
       dco::derivative(y_active(i)) = 1.0;
-      res += pow(dco::derivative(L(t, x, y_active, p)), 2);
+      active_t L_val = L(t, x, y_active, p);
+      res(i) = pow(dco::derivative(L_val), 2);
       dco::derivative(y_active(i)) = 0;
     }
-    return res;
+    return res.sum();
   }
 
   template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
   auto operator()(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-                  Eigen::Vector<T, PDIMS> const &p) const
-      -> std::common_type_t<X, Y> {
-    return dLdy_sqr(t, x, y, p);
+                  Eigen::Vector<T, PDIMS> const &p) const {
+    return norm_dLdy(t, x, y, p);
   }
 };
 
@@ -567,13 +545,12 @@ template <typename OBJECTIVE, typename CONSTRAINT, typename NUMERIC_T = double,
           typename POLICIES = suggested_interval_policies<NUMERIC_T>,
           int YDIMS = Eigen::Dynamic, int NPARAMS = Eigen::Dynamic>
 class ConstrainedBNBOptimizer
-    : public BNBOptimizerBase<constrained_opt_detail<OBJECTIVE, CONSTRAINT>,
+    : public BNBOptimizerBase<constraint_detail<OBJECTIVE, CONSTRAINT>,
                               NUMERIC_T, POLICIES,
                               propagate_dynamic_v<YDIMS, YDIMS + 1>, NPARAMS> {
-
 public:
   using base_t =
-      BNBOptimizerBase<constrained_opt_detail<OBJECTIVE, CONSTRAINT>, NUMERIC_T,
+      BNBOptimizerBase<constraint_detail<OBJECTIVE, CONSTRAINT>, NUMERIC_T,
                        POLICIES, propagate_dynamic_v<YDIMS, YDIMS + 1>,
                        NPARAMS>;
   using interval_t = typename base_t::interval_t;
@@ -584,11 +561,15 @@ public:
   using y_hessian_t = typename base_t::y_hessian_t;
   using y_hessian_interval_t = typename base_t::y_hessian_interval_t;
 
-private:
-  constrained_opt_detail<OBJECTIVE, CONSTRAINT> m_constrained_objective;
+public:
+  constraint_detail<OBJECTIVE, CONSTRAINT> m_constrained_objective;
 
 public:
-  ConstrainedBNBOptimizer(OBJECTIVE const &o, CONSTRAINT const &c, BNBOptimizerSettings<NUMERIC_T> const &t_settings, y_interval_t const& t_domain) : base_t(constrained_opt_detail<OBJECTIVE, CONSTRAINT>(o, c), t_settings, t_domain){}
+  ConstrainedBNBOptimizer(OBJECTIVE const &f, CONSTRAINT const &g,
+                          BNBOptimizerSettings<NUMERIC_T> const &t_settings,
+                          y_interval_t const &t_domain)
+      : base_t(constraint_detail<OBJECTIVE, CONSTRAINT>{f, g}, t_settings,
+               t_domain) {}
 
 protected:
   vector<y_interval_t> process_interval(size_t tasknum, NUMERIC_T t,
@@ -600,13 +581,18 @@ protected:
     if (this->settings.LOGGING_ENABLED) {
       logger.log_task_begin(clock::now(), tasknum, y_i);
     }
-
+    // convergence test
     std::vector<bool> dims_converged = this->measure_convergence(y_i);
     size_t result_code = this->convergence_test(dims_converged);
 
+    // constraint test
     result_code |= constraint_feasibility_test(t, x, y_i, params);
     // return early if constraint infeasible.
     if (result_code & CONSTRAINT_INFEASIBLE) {
+      // fmt::println("constraint value {:.4e} failed for \n{::.4e}",
+      //              m_constrained_objective.g(
+      //                  t, x, y_i(Eigen::seq(1, Eigen::last)), params),
+      //              y_i);
       if (this->settings.LOGGING_ENABLED) {
         logger.log_task_complete(clock::now(), tasknum, y_i, result_code);
       }
@@ -649,17 +635,8 @@ protected:
                            d2hdy2.rowwise(), dims_converged);
     }
     // take actions based upon test results.
-    vector<y_interval_t> candidate_intervals;
-    switch (this->settings.MODE) {
-    case FIND_ALL_LOCAL_MINIMIZERS:
-      candidate_intervals = finalize_minimizers_no_value_test(
-          t, x, y_i, params, dims_converged, result_code, sresults);
-      break;
-    case FIND_ONLY_GLOBAL_MINIMIZER:
-      candidate_intervals = finalize_minimizers_with_value_test(
-          t, x, y_i, params, dims_converged, result_code, sresults);
-      break;
-    }
+    vector<y_interval_t> candidate_intervals = finalize_minimizer_candidates(
+        t, x, y_i, params, dims_converged, result_code, sresults);
 
     if (this->settings.LOGGING_ENABLED) {
       logger.log_task_complete(clock::now(), tasknum, y_i, result_code);
@@ -671,10 +648,57 @@ protected:
   OptimizerTestCode constraint_feasibility_test(NUMERIC_T t, NUMERIC_T x,
                                                 y_interval_t const &y,
                                                 params_t const &p) {
-    if (boost::numeric::zero_in(m_constrained_objective.g(t, x, y, p))) {
+    if (boost::numeric::zero_in(m_constrained_objective.g(
+            t, x, y(Eigen::seq(1, Eigen::last)), p))) {
       return CONSTRAINT_FEASIBLE;
     }
     return CONSTRAINT_INFEASIBLE;
+  }
+
+  vector<y_interval_t> finalize_minimizer_candidates(
+      NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_i, params_t const &params,
+      vector<bool> &dims_converged, size_t &result_code, results_t &sresults) {
+    vector<y_interval_t> candidate_intervals;
+    if (this->settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER &&
+        (result_code & VALUE_TEST_FAIL)) {
+      // if only searching for the global and the value test has been failed
+      // do nothing :)
+    } else if (result_code & (GRADIENT_TEST_FAIL | HESSIAN_TEST_LOCAL_MAX)) {
+      // gradient test OR hessian test failed
+      // do nothing :)
+    } else if (result_code & HESSIAN_TEST_LOCAL_MIN) {
+      // gradient test and hessian test passed!
+      // hessian is SPD -> h(x) on interval is convex
+      y_interval_t y_res =
+          this->narrow_via_bisection(t, x, y_i, params, dims_converged);
+      result_code |= CONVERGENCE_TEST_PASS;
+      // do we need to repeat the test here?
+      if (this->settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER) {
+        // if we are searching for ONLY the global minimizer
+        // we need to repeat the value test!
+        interval_t h_res = this->m_objective.value(t, x, y_i, params);
+        if (h_res.lower() >= sresults.optima_upper_bound) {
+          result_code |= VALUE_TEST_FAIL;
+        } else {
+          sresults.minima_intervals.push_back(y_res);
+        }
+      } else {
+        sresults.minima_intervals.push_back(y_res);
+      }
+    } else if (result_code & CONVERGENCE_TEST_PASS) {
+      // gradient contains zero, hessian test is inconclusive,
+      // but interval cannot be divided, so we save it for use later
+      // if we want to try to analyze these intervals in more detail.
+      sresults.hessian_test_inconclusive.push_back(y_i);
+    } else {
+      // gradient contains zero, hessian test is inconclusive,
+      // but the interval CAN be divided
+      // therefore, we choose to bisect the interval and
+      // continue the search.
+      candidate_intervals =
+          this->bisect_interval(t, x, y_i, params, dims_converged);
+    }
+    return candidate_intervals;
   }
 };
 

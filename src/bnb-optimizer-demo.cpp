@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
   for (double x0 : x_tests) {
     auto res = optimizer.find_minima_at(0.0, x0, p);
     fmt::println("results at x={:.2f}:", x0);
-    for (auto const &y : res.minima_intervals){
+    for (auto const &y : res.minima_intervals) {
       fmt::println(" {:: .6f}", y);
     }
   }
@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
   fmt::println("{:::.6f}", res2.minima_intervals);
 
   BNBOptimizerSettings<double> settings_with_constraint;
-  settings_with_constraint.TOL_Y = 1.0e-3;
+  settings_with_constraint.TOL_Y = 1.0e-8;
   settings_with_constraint.LOGGING_ENABLED = false;
   settings_with_constraint.MODE = FIND_ALL_LOCAL_MINIMIZERS;
   settings_with_constraint.RETEST_CRITICAL_POINTS = true;
@@ -64,12 +64,38 @@ int main(int argc, char **argv) {
   // we should automatically (hopefully) insert extra variables at the front of
   // y for the lagrange multiplier...
   auto h3 = [](auto t, auto x, auto const &y, auto const &p) {
-    return p(0) * y(0) + p(1) * y(1);
+    return decltype(y(0))(p(0) * y(0) + p(1) * y(1));
   };
   auto g = [](auto t, auto x, auto const &y, auto const &p) {
-    return pow(y(0), 2) + pow(y(1), 2) - p(2);
+    return decltype(y(0))(pow(y(0), 2) + pow(y(1), 2) - p(2));
   };
 
-  using opt3_t = ConstrainedBNBOptimizer<decltype(h3), decltype(g), double, suggested_interval_policies<double>, 2, 3>;
-  
+  using opt3_t =
+      ConstrainedBNBOptimizer<decltype(h3), decltype(g), double,
+                              suggested_interval_policies<double>, 2, 3>;
+  typename opt3_t::y_interval_t domain3{typename opt3_t::interval_t{-8.0, 8.0},
+                                        typename opt3_t::interval_t{-8.0, 8.0},
+                                        typename opt3_t::interval_t{-8.0, 8.0}};
+  fmt::println("{:: .4e}", domain3);
+  opt3_t opt3(h3, g, settings_with_constraint, domain3);
+  typename opt3_t::params_t p3{1.0, 1.0, 1.0};
+  auto res3 = opt3.find_minima_at(0.0, 0.0, p3);
+  fmt::println("{:d}", res3.minima_intervals.size());
+  for (auto &y : res3.minima_intervals) {
+    fmt::println("{:: .6f}, {: .2f}, {: .2f}", y,
+                 g(1.0, 1.0, y(Eigen::seq(1, Eigen::last)), p3),
+                 opt3.m_constrained_objective(1.0, 1.0, y, p3));
+  }
+
+  fmt::println("{:d}", res3.hessian_test_inconclusive.size());
+  for (auto &y : res3.hessian_test_inconclusive) {
+    fmt::println("{:: .6f}, {: .2f}, {: .2f}", y,
+                 g(1.0, 1.0, y(Eigen::seq(1, Eigen::last)), p3),
+                 opt3.m_constrained_objective(1.0, 1.0, y, p3));
+  }
+
+  auto t1 = constraint_detail<decltype(h3), decltype(g)>{h3, g};
+  auto v = t1(1.0, 1.0, Eigen::Vector<double, 3>{1.0, 1.0, 1.0},
+              Eigen::Vector<double, 3>{2.0, 2.0, 2.0});
+  fmt::println("{:.6f}", v);
 }
