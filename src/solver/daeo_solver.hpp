@@ -140,7 +140,7 @@ public:
       if (iterations_since_search == settings.SEARCH_FREQUENCY) {
         opt_res = m_optimizer.find_minima_at(next.t, next.x, params);
         if (opt_res.minima_intervals.size() == 0) {
-          fmt::println("*** SCREAMING CRYING VOMITING ON THE FLOOR ***");
+          fmt::println("*** SCREAMING CRYING VOMITING ON THE FLOOR iter={:d}***", iter);
           break;
         }
         solution_state_t from_opt = solution_state_from_optimizer_results(
@@ -151,7 +151,7 @@ public:
                                          from_opt.i_star);
         }
         // check if we need to rewind multiple time steps
-        fmt::println("  Checking identity of new optima at t={:.2e}",
+        fmt::println("  {:d} Checking identity of new optima at t={:.2e}", iter,
                      from_opt.t);
         fmt::println("  Current candidates for y are             {:::.4e}",
                      next.y);
