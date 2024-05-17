@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.41
+# v0.19.42
 
 using Markdown
 using InteractiveUtils
@@ -293,7 +293,7 @@ let
 	end
 	tvals = [0., 0.5, 1.0, 1.25, 2.0]
 	old_ticks = (tvals, ["$t" for t∈tvals])
-	real_events = events.T[[3, 4, 5, 8]]
+	real_events = events.T#[[3, 4, 5, 8]]
 	vline!(p, real_events, ls=:dashdot, label="Events", lw=2)
 	scatter!(p, events.T, events.X, marker=:+, ms=12, msw=6, label = "Detected Events")
 	
@@ -322,7 +322,7 @@ let df = gw_data_lowtol
 	end
 	tvals = [0., 0.5, 1.0, 2.0]
 	old_ticks = (tvals, ["$t" for t∈tvals])
-	real_events = events.T[[3,4, 5, 8]]
+	real_events = events.T#[[3,4, 5, 8]]
 	vline!(p, real_events, ls=:dashdot, label="Events", lw=2)
 	evt_ticks = (real_events, [L"t_{e%$(i)}" for i∈1:length(real_events)])
 	new_ticks = (old_ticks[1] ∪ evt_ticks[1], old_ticks[2] ∪ evt_ticks[2])

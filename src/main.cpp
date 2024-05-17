@@ -78,10 +78,10 @@ void griewank_example_event_tolerance_study() {
 
   DAEOSolverSettings<double> settings_lowtol;
   settings_lowtol.LINEARIZE_OPTIMIZER_DRIFT = false;
-  settings_lowtol.NEWTON_EPS = 1.0e-10;
-  settings_lowtol.EVENT_DETECTION_EPS = 1.0e-4;
-  settings_lowtol.y0_min = -10.0;
-  settings_lowtol.y0_max = 10.0;
+  settings_lowtol.NEWTON_EPS = 1.0e-8;
+  settings_lowtol.EVENT_DETECTION_EPS = 1.0e-6;
+  settings_lowtol.y0_min = -20.0;
+  settings_lowtol.y0_max = 20.0;
   settings_lowtol.SEARCH_FREQUENCY = 100;
 
   auto settings_lowtol_noevents = settings_lowtol;

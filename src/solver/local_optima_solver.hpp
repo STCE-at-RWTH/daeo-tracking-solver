@@ -347,7 +347,7 @@ private:
 
   vector<y_interval_t> finalize_minimizers_no_value_test(
       NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_i, params_t const &params,
-      vector<bool> const &dims_converged, size_t &result_code,
+      vector<bool> &dims_converged, size_t &result_code,
       results_t &sresults) {
     vector<y_interval_t> candidate_intervals;
 
@@ -379,7 +379,7 @@ private:
 
   vector<y_interval_t> finalize_minimizers_with_value_test(
       NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_i, params_t const &params,
-      vector<bool> const &dims_converged, size_t &result_code, results_t &sresults) {
+      vector<bool> &dims_converged, size_t &result_code, results_t &sresults) {
     vector<y_interval_t> candidate_intervals;
     if ((result_code & GRADIENT_TEST_FAIL) |
         (result_code & HESSIAN_TEST_LOCAL_MAX)) {
@@ -396,7 +396,7 @@ private:
       if (h_res.lower() >= sresults.optima_upper_bound) {
         result_code |= VALUE_TEST_FAIL;
       } else {
-        sresults.minima_intervals.push_back(y_i);
+        sresults.minima_intervals.push_back(y_res);
       }
     } else if (result_code & CONVERGENCE_TEST_PASS) {
       // gradient contains zero, hessian test is inconclusive,

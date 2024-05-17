@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <ranges>
 #include <vector>
 
 #include "Eigen/Dense"
@@ -61,8 +62,8 @@ public:
    * @brief Type of the local optimizer.
    */
   using optimizer_t =
-      BNBOptimizer<OBJECTIVE, NUMERIC_T,
-                        suggested_interval_policies<NUMERIC_T>, YDIMS, NPARAMS>;
+      BNBOptimizer<OBJECTIVE, NUMERIC_T, suggested_interval_policies<NUMERIC_T>,
+                   YDIMS, NPARAMS>;
 
   /**
    * @brief Type for an optimizer of the objective function.
@@ -109,8 +110,8 @@ public:
     }
     fmt::println("Starting to solve DAEO at t={:.4e}, x0={:.4e}, and dt={:.4e}",
                  t, x0, dt);
-    typename optimizer_t::results_t opt_res = m_optimizer.find_minima_at(
-        t, x0, params, settings.ONLY_GLOBAL_OPTIMIZATION);
+    typename optimizer_t::results_t opt_res =
+        m_optimizer.find_minima_at(t, x0, params);
     fmt::println("  BNB optimizer yields candidates for y at {:::.4e}",
                  opt_res.minima_intervals);
     solution_state_t current, next;
@@ -137,8 +138,7 @@ public:
       bool event_found = false;
       next = integrate_daeo(current, dt, params);
       if (iterations_since_search == settings.SEARCH_FREQUENCY) {
-        opt_res = m_optimizer.find_minima_at(next.t, next.x, params,
-                                             settings.ONLY_GLOBAL_OPTIMIZATION);
+        opt_res = m_optimizer.find_minima_at(next.t, next.x, params);
         if (opt_res.minima_intervals.size() == 0) {
           fmt::println("*** SCREAMING CRYING VOMITING ON THE FLOOR ***");
           break;
@@ -173,8 +173,7 @@ public:
                   y_t dhdy = h.grad_y(t, x, y, p);
                   // take one newton step
                   y_t to_zero = dhdy.binaryExpr(
-                      y,
-                      [](auto dy, auto y_i) -> auto{ return y_i / dy; });
+                      y, [](auto dy, auto y_i) -> auto{ return y_i / dy; });
                   // scale by appropraite setting
                   return to_zero.norm() * settings.EVENT_DRIFT_COEFF;
                 });
@@ -218,8 +217,15 @@ public:
         iterations_since_search = 0;
       } else {
         // we avoid this simple check when gopt has run
-        update_optimizer(next, params);
+        size_t min_idx = compute_global_minimizer(next, params);
+        next.i_star = min_idx;
         event_found = next.i_star != current.i_star;
+        if (event_found &&
+            (m_objective.value(next.t, next.x, next.y_star(), params) >=
+             m_objective.value(next.t, next.x, next.y[current.i_star],
+                               params))) {
+          fmt::println("  wtf");
+        }
       }
 
       // correct event if enabled in settings
@@ -229,43 +235,70 @@ public:
       // at either end of the time step, this could be relaxed.
 
       if (settings.EVENT_DETECTION_AND_CORRECTION && event_found) {
-        fmt::println("  Detected global optimzer switch between (t={:.6e}, "
-                     "y={::.4e}) and (t={:.6e}, y={::.4e})",
-                     current.t, current.y_star(), next.t, next.y_star());
+        fmt::println(
+            "  Detected global optimzer switch between (t={:.6e}, "
+            "y={::.4e}, h={:.4e}) and (t={:.6e}, y={::.4e}, h={:.4e})",
+            current.t, current.y_star(),
+            m_objective.value(current.t, current.x, current.y_star(), params),
+            next.t, next.y_star(),
+            m_objective.value(next.t, next.x, next.y_star(), params));
         fmt::println("    Jump size is {:.6e}",
                      (current.y_star() - next.y_star()).norm());
-        solution_state_t computed_event =
+
+        auto [computed_event, is_event] =
             locate_and_integrate_to_event_bisect(current, next, params);
+
         fmt::println("    Event at t={:.6e}, x={:.4e}", computed_event.t,
                      computed_event.x);
-        NUMERIC_T dt_event = computed_event.t - current.t;
-        if (settings.LOGGING_ENABLED) {
-          dy = compute_dy(current.y, computed_event.y);
-          logger.log_event_correction(
-              clock::now(), iter, computed_event.t, dt_event, computed_event.x,
-              computed_event.x - current.x, computed_event.y, dy,
-              computed_event.i_star);
+
+        // check if the event search actually yielded any change
+        // by checking if the optimizer has shifted.
+        if (!is_event) {
+          // event was a misfire, something went wrong
+          // unsure how this would happen, but it seems to quite often
+          next.i_star = current.i_star;
+          if (settings.LOGGING_ENABLED) {
+            dy = compute_dy(current.y, next.y);
+            logger.log_time_step(clock::now(), iter, next.t, dt, next.x,
+                                 next.x - current.x, next.y, dy, next.i_star);
+          }
+        } else {
+          NUMERIC_T dt_event = computed_event.t - current.t;
+          NUMERIC_T dt_grid = next.t - computed_event.t;
+          // project optimizers forward by integrating to event time
+          solution_state_t at_event = integrate_daeo(current, dt_event, params);
+          // update the relevant optimizers to the event
+          // i.e. current global optimizer -> computed event's former global
+          // optimizer and new global optimizer -> computed event's new global
+          // optimizer these copies should be meaningless, since the integration
+          // step is the same...
+          // we should have this:
+          // at_event.y[current.i_star] == computed_event.y[0];
+          // at_event.y[next.i_star] == computed_event.y[1];
+          // which means we can just do this
+          at_event.i_star = next.i_star;
+          if (settings.LOGGING_ENABLED) {
+            dy = compute_dy(current.y, at_event.y);
+            logger.log_event_correction(
+                clock::now(), iter, at_event.t, dt_event, at_event.x,
+                at_event.x - current.x, at_event.y, dy, at_event.i_star);
+          }
+          next = integrate_daeo(at_event, dt_grid, params);
+          if (settings.LOGGING_ENABLED) {
+            dy = compute_dy(at_event.y, next.y);
+            logger.log_time_step(clock::now(), iter, next.t, dt, next.x,
+                                 next.x - current.x, next.y, dy, next.i_star);
+          }
         }
-        // complete time step from event back to the grid.
-        NUMERIC_T dt_grid = dt - dt_event;
-        // project optimizers forward by integrating to event time
-        solution_state_t at_event = integrate_daeo(current, dt_event, params);
-        // update the relevant optimizers to the event
-        // i.e. current global optimizer -> computed event's former global
-        // optimizer and new global optimizer -> computed event's new global
-        // optimizer these copies should be meaningless, since the integration
-        // step is the same...
-        at_event.y[current.i_star] = computed_event.y[0];
-        at_event.y[next.i_star] = computed_event.y[1];
-        at_event.i_star = next.i_star;
-        next = integrate_daeo(computed_event, dt_grid, params);
+      } else {
+        // we don't need to handle events, we can move on.
+        if (settings.LOGGING_ENABLED) {
+          dy = compute_dy(current.y, next.y);
+          logger.log_time_step(clock::now(), iter, next.t, dt, next.x,
+                               next.x - current.x, next.y, dy, next.i_star);
+        }
       }
-      // we don't need to handle events, we can move on.
-      if (settings.LOGGING_ENABLED) {
-        dy = compute_dy(current.y, next.y);
-        logger.log_time_step(clock::now(), iter, next.t, dt, next.x,
-                             next.x - current.x, next.y, dy, next.i_star);
-      }
+
       current = std::move(next);
       iter++;
       iterations_since_search++;
@@ -298,28 +331,31 @@ private:
     }
     solution_state_t ss{t, x, 0, y};
     if (ss.y.size() > 1) {
-      update_optimizer(ss, p);
+      ss.i_star = compute_global_minimizer(ss, p);
     }
     return ss;
   }
 
   /**
-   * @brief Update the index of the global optimizer @c y★ in a solution state
+   * @brief Compute the index of the global optimizer @c y★ in a solution state
    * @c s given a parameter vector @c p .
-   * @param[inout] s The solution state state in which to update the optimizer
-   * index.
+   * @param[in] s The solution state state.
    * @param[in] p The parameter vector to pass through to the objective
    * function.
+   * @returns @c i★ for the solution state.
    */
-  void update_optimizer(solution_state_t &s, const params_t &p) {
+  size_t compute_global_minimizer(solution_state_t const &s,
+                                  const params_t &p) {
     NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
+    size_t i_star = 0;
     for (size_t i = 0; i < s.n_local_optima(); i++) {
       NUMERIC_T h = m_objective.value(s.t, s.x, s.y[i], p);
       if (h < h_star) {
         h_star = h;
-        s.i_star = i;
+        i_star = i;
       }
     }
+    return i_star;
   }
 
   vector<y_t> compute_dy(vector<y_t> const &y, vector<y_t> const &y_next) {
@@ -328,6 +364,23 @@ private:
       dy[i] = (y_next[i] - y[i]);
     }
     return dy;
+  }
+
+  /**
+   * @brief Use the implicit function theorem to estimate dydt.
+   */
+  vector<y_t> estimate_dydt(solution_state_t const &s, params_t const &p) {
+    auto dxdt = m_xprime.value(s.t, s.x, s.y_star(), p);
+    vector<y_t> res(s.y.size());
+    std::transform(
+        s.y.cbegin(), s.y.cend(), res.begin(),
+        [=, t = s.t, x = s.x, &p = p, &h = m_objective](y_t const &y) {
+          auto d2hdyx = h.d2dxdy(t, x, y, p);
+          y_hessian_t d2hdyy = h.hess_y(t, x, y, p);
+          auto dydx = d2hdyy.colPivHouseholderQr().solve(-1 * d2hdyx);
+          return dydx * dxdt;
+        });
+    return res;
   }
 
   /**
@@ -497,9 +550,14 @@ private:
    */
   solution_state_t integrate_daeo(solution_state_t const &start, NUMERIC_T dt,
                                   params_t const &p) {
-    // copy into our guess and advance time
+    // copy and make a guess using an estimate of dydt
     solution_state_t next(start);
+    vector<y_t> dydt = estimate_dydt(start, p);
     next.t += dt;
+    for (size_t i = 0; i < next.y.size(); i++) {
+      next.y[i] += dydt[i] * dt;
+    }
+
     Eigen::VectorX<NUMERIC_T> G, diff;
     Eigen::MatrixX<NUMERIC_T> jacG;
     size_t iter = 0;
@@ -550,6 +608,7 @@ private:
   }
 
   /**
+   * @deprecated
    * @brief Locate and correct an event between @c start and @c end.
    * Uses Newton's method, which has a tendency to escape the interval in
    * question.
@@ -595,7 +654,7 @@ private:
         break;
       }
 
-      update_optimizer(guess, p);
+      guess.i_star = compute_global_minimizer(guess, p);
       dHdt = (event_function_ddx(guess.t, guess.x, guess.y[left.i_star],
                                  guess.y[right.i_star], p) *
               m_xprime.value(guess.t, guess.x, guess.y_star(), p));
@@ -614,20 +673,23 @@ private:
    * @param[in] start The solution state at the beginning of the time step.
    * @param[in] end The (incorrect) solution state at the end of the time step.
    * @param[in] p Parameter vector.
-   * @return Value of solution at event.
+   * @return Value of solution at event. Result @c i_star will be equal to one
+   * if an event was located, zero otherwise.
    *
    * @details We assume that no optimizers emerge or vanish inside this time
    * step. This allows us to assume that @c start.y_star() and @c end.y_star()
    * both exist as possible optimizers for the duration of the time step, even
    * if we are only provided with the results from global optimization.
    */
-  solution_state_t
+  std::tuple<solution_state_t, bool>
   locate_and_integrate_to_event_bisect(solution_state_t const &start,
                                        solution_state_t const &end,
                                        params_t const &p) {
     // make local copies that only know about the swapped optimizer
-    solution_state_t left{start.t, start.x, 0, {start.y_star(), end.y_star()}};
-    solution_state_t right{end.t, end.x, 1, {start.y_star(), end.y_star()}};
+    solution_state_t left{
+        start.t, start.x, 0, {start.y_star(), start.y[end.i_star]}};
+    solution_state_t right{
+        end.t, end.x, 1, {end.y[start.i_star], end.y_star()}};
     solution_state_t guess;
     NUMERIC_T delta = (end.t - start.t) / 2;
     NUMERIC_T dt_guess = delta;
@@ -654,10 +716,8 @@ private:
       }
       iter++;
     }
-    // is this a dirty hack? only time will tell
-    // we know that after t_event, the optimizer is the same as end.y_star()
     guess.i_star = 1;
-    return guess;
+    return {guess, (fabs(H) < settings.NEWTON_EPS)};
   }
 };
 
