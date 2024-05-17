@@ -253,10 +253,10 @@ end;
 
 # ╔═╡ baa48d9b-50e3-458e-8105-568d96453209
 let n = 1
-	p = plot(0.:0.001:1., x1_exact, label=L"x_{exact}(t)", xlabel=L"t", ylabel=L"x", lw=1; plot_style_kwargs...)
-	scatter!(p, with_events[n].T, with_events[n].X, label=L"x_{ev}(t)", marker=:x, msw=3, ms=6)
-	scatter!(p, without_events[n].T, without_events[n].X, label=L"x_{noev}(t)", marker=:+, msw=3, ms=6)
-	vline!(p, [-log(0.5)/3], label=L"t_e", ls=:dashdot)
+	p = plot(0.:0.001:1., x1_exact, label=L"x(t)", xlabel=L"t", ylabel=L"x", lw=1; plot_style_kwargs...)
+	scatter!(p, with_events[n].T, with_events[n].X, label=L"x^+", marker=:x, msw=3, ms=6)
+	scatter!(p, without_events[n].T, without_events[n].X, label=L"x^-", marker=:+, msw=3, ms=6)
+	vline!(p, [-log(0.5)/3], label=L"\tau", ls=:dashdot)
 	# title!(p, "Simple Example; Computed vs. Exact; "*L"dt=%$(time_step_size(with_events[n]))")
 	savefig(p, "../ad2024/gfx/easy_daeo_solution.pdf")
 	p
@@ -265,7 +265,7 @@ end
 # ╔═╡ 43ee777f-8b59-402e-9ee2-1066d4127b41
 let
 	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=true, marker=:+, ms=8, msw=3, legend=:bottomleft, label="With Event Detection", xlabel=L"\Delta t"; plot_style_kwargs...)
-	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, xminorgrid=true, minorticks=:true, marker=:x, ms=8, msw=3, label="Without Event Detection", ylabel=L"\|x_{est}-x_{exact}\|_{L^1}", xflip=true)
+	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, xminorgrid=true, minorticks=:true, marker=:x, ms=8, msw=3, label="Without Event Detection", ylabel=L"\|x^n-x(t^n)\|_{L^1}", xflip=true)
 	plot!(p, [10.0^h for h=0:-1:(-1*(N_RUNS-1))], [t->0.1*t^2], label=L"O(\Delta t^2)", ls=:dashdot)
 	savefig(p, "../ad2024/gfx/easy_daeo_convergence.pdf")
 	p
@@ -280,21 +280,24 @@ md"""
 """
 
 # ╔═╡ 7b308bce-87e0-4856-8b90-e1f367442c7e
-gw_data_lowtol = make_data(joinpath(data_file_directory, "griewank_example_lowtol_solver_log.tsv"))
+gw_data_hightol = make_data(joinpath(data_file_directory, "griewank_example_hightol_solver_log.tsv"))
+
+# ╔═╡ d0bcd5d9-7ace-4a08-be95-09ab3e818fe7
+gw_data_lowtol = make_data(joinpath(data_file_directory,"griewank_example_lowtol_solver_log.tsv"))
 
 # ╔═╡ 9cc02865-0439-442b-bb62-9f32cb9b48c2
 let
-	p = plot(gw_data_lowtol.T, gw_data_lowtol.X, label=L"x(t)", lw = 2; plot_style_kwargs...)
+	p = plot(gw_data_lowtol.T, gw_data_lowtol.X, label=L"x", lw = 2; plot_style_kwargs...)
 	events = filter(gw_data_lowtol) do row
 		row.EVENTID == TIME_STEP_EVENT_CORRECTED
 	end
 	tvals = [0., 0.5, 1.0, 1.25, 2.0]
 	old_ticks = (tvals, ["$t" for t∈tvals])
-	real_events = events.T[[3, 4, 5, 8]]
+	real_events = events.T#[[3, 4, 5, 8]]
 	vline!(p, real_events, ls=:dashdot, label="Events", lw=2)
 	scatter!(p, events.T, events.X, marker=:+, ms=12, msw=6, label = "Detected Events")
 	
-	evt_ticks = (real_events, [L"t_{e%$(i)}" for i∈1:length(real_events)])
+	evt_ticks = (real_events, [L"\tau_{%$(i)}" for i∈1:length(real_events)])
 	new_ticks = (old_ticks[1] ∪ evt_ticks[1], old_ticks[2] ∪ evt_ticks[2])
 	xticks!(p, new_ticks)
 	savefig(p, "../ad2024/gfx/hard_daeo_solution.pdf")
@@ -319,9 +322,9 @@ let df = gw_data_lowtol
 	end
 	tvals = [0., 0.5, 1.0, 2.0]
 	old_ticks = (tvals, ["$t" for t∈tvals])
-	real_events = events.T[[3,4, 5, 8]]
+	real_events = events.T#[[3,4, 5, 8]]
 	vline!(p, real_events, ls=:dashdot, label="Events", lw=2)
-	evt_ticks = (real_events, [L"t_{e%$(i)}" for i∈1:length(real_events)])
+	evt_ticks = (real_events, [L"\tau_{%$(i)}" for i∈1:length(real_events)])
 	new_ticks = (old_ticks[1] ∪ evt_ticks[1], old_ticks[2] ∪ evt_ticks[2])
 	xticks!(p, new_ticks)
 	#for evt ∈ eachrow(events)
@@ -341,19 +344,17 @@ let
 	p
 end
 
-# ╔═╡ 6c63de5c-d5d1-4a49-8fd2-daef511a5aec
-@bind x_in Slider(1.:0.001:6.0, show_value=true, default=1.0)
-
 # ╔═╡ 2e9360a6-7f0b-4f95-b1af-d76296511d33
 let c = 5.0, d = 5.0
-	x = 0:0.01:6.0
-	y = 0:0.01:6.0
+	x = 0:0.005:6.0
+	y = 0:0.005:6.0
 	fn(x, y) = (x-y)^2 + d*sin(c*y)
 	data = fn.(x,y')
-	p = plot(x, y, data, camera=(30, 30); plot_style_kwargs...)
-	vline!(p, [x_in])
-	p
+	plot(x, y, data, camera=(30, 30); plot_style_kwargs...)
 end
+
+# ╔═╡ 6c63de5c-d5d1-4a49-8fd2-daef511a5aec
+@bind x_in Slider(1.:0.001:12.0, show_value=true, default=1.0)
 
 # ╔═╡ bf21d26d-7c6d-4fe8-9343-19dc658b3275
 let x = x_in
@@ -364,12 +365,6 @@ let x = x_in
 	hline!(p, [0., 1.0])
 	ylims!(p, (-2, 2))
 end
-
-# ╔═╡ 07179d60-d344-41e2-a1bd-27f54847854b
-1/sqrt(2)
-
-# ╔═╡ 83582a22-5d49-44ec-8ce0-f3628661a0ba
-sqrt(2)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1625,6 +1620,7 @@ version = "1.4.1+1"
 # ╠═7a83ff40-3e20-4603-9653-1685018af095
 # ╟─689bb63c-7dd7-492d-973c-989b510fa4fc
 # ╠═7b308bce-87e0-4856-8b90-e1f367442c7e
+# ╠═d0bcd5d9-7ace-4a08-be95-09ab3e818fe7
 # ╠═9cc02865-0439-442b-bb62-9f32cb9b48c2
 # ╠═7b461e72-e896-4737-9640-7c050532e010
 # ╠═89ef3cdb-66fb-4443-8dc1-a6df0a714f85
@@ -1633,7 +1629,5 @@ version = "1.4.1+1"
 # ╠═2e9360a6-7f0b-4f95-b1af-d76296511d33
 # ╠═6c63de5c-d5d1-4a49-8fd2-daef511a5aec
 # ╠═bf21d26d-7c6d-4fe8-9343-19dc658b3275
-# ╠═07179d60-d344-41e2-a1bd-27f54847854b
-# ╠═83582a22-5d49-44ec-8ce0-f3628661a0ba
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
