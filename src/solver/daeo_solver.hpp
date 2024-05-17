@@ -372,14 +372,12 @@ private:
   vector<y_t> estimate_dydt(solution_state_t const &s, params_t const &p) {
     auto dxdt = m_xprime.value(s.t, s.x, s.y_star(), p);
     vector<y_t> res(s.y.size());
-    std::transform(
-        s.y.cbegin(), s.y.cend(), res.begin(),
-        [=, t = s.t, x = s.x, &p = p, &h = m_objective](y_t const &y) {
-          auto d2hdyx = h.d2dxdy(t, x, y, p);
-          y_hessian_t d2hdyy = h.hess_y(t, x, y, p);
-          auto dydx = d2hdyy.colPivHouseholderQr().solve(-1 * d2hdyx);
-          return dydx * dxdt;
-        });
+    for (size_t i = 0; i < s.y.size(); i++) {
+      auto d2hdyx = m_objective.d2dxdy(s.t, s.x, s.y[i], p);
+      y_hessian_t d2hdyy = m_objective.hess_y(s.t, s.x, s.y[i], p);
+      auto dydx = d2hdyy.colPivHouseholderQr().solve(-1 * d2hdyx);
+      res[i] = dydx * dxdt;
+    }
     return res;
   }
 
