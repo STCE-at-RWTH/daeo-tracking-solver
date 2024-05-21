@@ -63,7 +63,8 @@
 \usepackage[letterpaper]{geometry}
 \usepackage{amssymb, amsmath, accents}
 \usepackage{graphicx, caption, subcaption, tabularx}
-\usepackage{biblatex}
+%\usepackage{cite}
+\usepackage[url=false]{biblatex}
 \addbibresource{daeos.bib}
 %\bibliographystyle{siam}
 \usepackage{ltexpprt}
@@ -182,7 +183,7 @@ At any time $t \geq t_0$, there will be some $y^\star(t)\in\left\{y_k(t)\right\}
 \begin{equation}
 	h(x(t), y^\star(t))\leq h(x(t),y^i(t))\, \forall\,y^i(t)\in\left\{y^k(t)\right\} 
 \end{equation}
-% TODO get someone to check the terminology here!
+
 This implies that the initial value problem posed in \eqref{eq:daeo-ivp} can be divided into a sequence of initial-value problems if $y^\star(t)$ has a sufficiently well-behaved dependency on $x$ and $t$\cite{deussenNumericalSimulationDifferentialalgebraic2023}.
 
 \begin{assumption}
@@ -283,7 +284,7 @@ AD uses the chain rule to compute derivatives of arbitrary functions by decompos
 If the gradient $\partial_{y_i}h(x, y)$ must be in an interval $\left[\partial_{y_i}h(x, \left[y\right])\right]$, and that interval does not contain $0$, then the input interval $\left[y\right]$ contains no points that satisfy the optimality conditions \eqref{eq:optimality-conditions}. These interval gradients are computed by substituting appropriately-typed intervals directly into the gradient driver for the function \cite{griewankEvaluatingDerivativesPrinciples2008, rallGlobalOptimizationUsing1985}. 
 
 Similarly, if the Hessian matrix $\partial^w_{y_iy_j}h(x,y)$ must be in an interval $\left[\partial^2_{y_iy_j}h(x, \left[y\right])\right]$, and that interval only contains positive definite matrices, then $h(x, y)$ is concave up over the entire input interval $\left[y\right]$. The positive definite-ness of interval matrices can be evaluated by testing if the interval eigenvalues are all positive, or by Sylvester's criterion, a condition on the determinants of successively larger submatrices of the original.
-% TODO cite Sylvester's criterion?
+
 \begin{Definition}
 	\label{def:sylvester}
 	\textbf{(Sylvester's Criterion)}
@@ -399,7 +400,7 @@ The solution for the DAEO is then
 	\end{cases}
 \end{equation}
 The solver should detect exactly one event at $\tau_1 = -\frac{1}{3}\ln\frac{1}{2}$.
-%TODO this is bad. this sucks. I hate it.
+
 Since there are no constraints on either $x$ or $y$ in \eqref{eq:the-easy-one}, the KKT conditions for this example reduce to
 \begin{equation*}
 	\mathrm{minimize\ in\ } y:\,h\left(x(t), y\right)
@@ -410,7 +411,7 @@ A suitable local optimization algorithm will converge to one of the local optimi
 \begin{figure}[tb]
 	\centering
 	\includegraphics[width=0.45\textwidth]{gfx/easy_daeo_solution.pdf}
-	\caption{The solution to \eqref{eq:the-easy-one} as computed by the solver both with and without event correction enabled. $x_{exact}(t)$ plots \eqref{eq:easy-daeo-solution}, and the vertical line is located at $\tau_1$. The data points $x_{ev}(t)$ and $x_{noev}(t)$ show the computed trajectory for $x(t)$ with and without events, respectively.  The event detection procedure generates an extra data point at $t={t_e}$ that lies on the boundary between two of the component IVPs in \eqref{eq:the-easy-one}. $\Delta t$ was set to $0.25$ for this computation.}
+	\caption{The solution to \eqref{eq:the-easy-one} as computed by the solver both with and without event correction enabled. $x(t)$ plots \eqref{eq:easy-daeo-solution}, and the vertical line is located at $\tau_1$. The data points $x^+(t)$ and $x^-(t)$ show the computed trajectory for $x(t)$ with and without events, respectively.  The event detection procedure generates an extra data point at $t={\tau}$ that lies on the boundary between two of the component IVPs in \eqref{eq:the-easy-one}. $\Delta t$ was set to $0.25$ for this computation.}
 	\label{fig:easy-example-solution}
 \end{figure}
 Figure \ref{fig:easy-example-solution} shows the difference between the solver results with the event detection and correction procedure enabled and without. The detected event adds an extra point into the computed solution, which functions as the initial value for a second DAE that exists from $t_{e} \leq t \leq t_{end}$. By correctly identifying the dynamics of $x(t)$ inside of the first time step from $t_0$ to $t_1$, the second-order convergence of the trapezoidal rule can be recovered.
@@ -418,7 +419,7 @@ Figure \ref{fig:easy-example-solution} shows the difference between the solver r
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=0.45\textwidth]{gfx/simple_ex_event_err.pdf}
-	\caption{Event locator error $\abs{t_{e, calculated} - t_{e, exact}}$. The event locator error converges with order $\Delta t^2$ to a user-set tolerance, which is used for every root-finding routine in the solver.}
+	\caption{Event locator error $\abs{\tau - \tau_{exact}}$. The event locator error converges with order $\Delta t^2$ to a user-set tolerance, which is used for every root-finding routine in the solver.}
 	\label{fig:easy-event-location}
 \end{figure}
 The event location procedure converges quickly enough to satisfy the consistency requirements given in \cite{mannshardtOnestepMethodsAny1978}. Consequently, using the event detection and correction procedure will restore the trapezoidal rule to order 2. A user-specified parameter controls the termination criterion for the event-location procedure, which places a strict limit on its accuracy.
@@ -426,7 +427,7 @@ The event location procedure converges quickly enough to satisfy the consistency
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=0.45\textwidth]{gfx/easy_daeo_convergence.pdf}
-	\caption{Convergence rates of the solver with (marked in blue, converges with order 2) and without (marked in orange, converges with order 1).}
+	\caption{Convergence rates of the solver with (marked in blue crosses, converges with order 2) and without (marked in orange exes, converges with order 1).}
 	\label{fig:easy-error-improvement}
 \end{figure}
 Figure \ref{fig:easy-error-improvement} shows the order-of-convergence increase due to the event location and simulation procedure. The price of recovering the second-order convergence is the addition of the event-detection procedure. The user may also trigger a search of the optimizer space at specific intervals, which incurs significant computational cost, especially if $n_y > 1$. However, local-optimizer tracking minimizes the number of times the global optimizer needs to be run. If it is known that the total number of optimizers $\left\{y^k\right\}$ is constant, the global optimizer only needs to be run as the beginning, which is the case for \eqref{eq:the-easy-one}.
@@ -452,7 +453,7 @@ Figure \ref{fig:easy-cost-comparison} shows the runtime costs of solving \eqref{
 % explain why brancing works the way it does somewhere
 In fact, the cost of the branch-and-bound procedure scales as $2^{n_y}$ (each "branch" step generates $2^{n_y}$ new intervals to search), while solving the local optimizer only scales fast as the cost of solving a linear system of $n_x + n_y\cdot\card\left(\left\{y^k\right\}\right)$ equations. When configured as "No Event Detection", the solver skips the event location procedure, which only saves the cost of one root-finding operation and one integration step.
 
-% TODO Better title.
+
 \subsection{Robustness Testing} The following example was designed to test the robustness of the solver in a situation where local optimizers emerge and vanish. 
 \begin{equation}
 	\label{eq:complicated-example}
@@ -470,7 +471,7 @@ This particular objective function $h(x, y)$ has a set of local optimizers $\lef
 	\includegraphics[width=0.45\textwidth]{gfx/hard_daeo_solution.pdf}
 	\includegraphics[width=0.45\textwidth]{gfx/hard_daeo_solution_xdot.pdf}
 	
-	\caption{Results of running the solver on \eqref{eq:complicated-example}. The solver erroneously identifies some events, but corrects on the next time step by returning the correct value. }
+	\caption{Results of running the solver on \eqref{eq:complicated-example}. The solver correctly detects the emergence and disappearance of local optimizers.}
 	\label{fig:complicated-example-solution}
 \end{figure}
 
@@ -530,7 +531,7 @@ In order for the local optimizer tracking and event detection techniques to be r
 
 Currently, the Lipschitz coefficients and bounds for $\partial_ty^k$ are set by the user, and the solver is very sensitive to these chosen parameters. In some cases, it is feasible to analytically compute the maximum possible optimizer drift, and pass that as a specific parameter. The usefulness of the solver would, however, be improved if it were possible to estimate these parameters during run-time.
 
-% TODO this is very weak, maybe naumann has ideas.
+
 
 In the broader context of differentiable programming, the improvement of the order of convergence of DAEO solvers to match that of DAE solvers is an important step towards explicit analysis of the sensitivity of solutions to DAEOs to discontinuities in the solution of a global optimization problem. It is now more feasible to study the sensitivity of these solutions to input parameters and the positions of the jump events $t_{e_j}$, which may improve the accuracy and effectiveness of solutions to control problems, such as the UV-flash problem posed in \cite{ritschelAlgorithmGradientbasedDynamic2018}. 
 
@@ -543,7 +544,7 @@ The code for this project is located on GitHub at
 
 It also relies on a public fork of Boost Interval developed by the authors, which is referenced via a \texttt{git submodule}.
 
-\newpage
+% \newpage
 
 \printbibliography
 \end{document}
