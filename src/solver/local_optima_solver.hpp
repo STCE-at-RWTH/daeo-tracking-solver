@@ -258,6 +258,88 @@ protected:
     return HESSIAN_MAYBE_INDEFINITE;
   }
 
+  OptimizerTestCode bordered_hessian_test(y_hessian_interval_t const &d2hdy2) {
+    const size_t m = settings.NUM_EQUALITY_CONSTRAINTS;
+    if ((m & 1) && leading_minors_negative(d2hdy2, m)) {
+      // hessian test is "backwards", since we are testing an odd-order
+      // submatrix
+      return HESSIAN_TEST_LOCAL_MIN;
+    } else if (leading_minors_positive(d2hdy2, m)) {
+      // hessian test is regular style
+      return HESSIAN_TEST_LOCAL_MIN;
+    } else if (leading_minors_alternate(d2hdy2, m)) {
+      return HESSIAN_TEST_LOCAL_MAX;
+    }
+    return HESSIAN_MAYBE_INDEFINITE;
+  }
+
+  vector<y_interval_t> finalize_minimizers_no_value_test(
+      NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_i, params_t const &params,
+      vector<bool> &dims_converged, size_t &result_code,
+      results_t &sresults) {
+    vector<y_interval_t> candidate_intervals;
+
+    if ((result_code & GRADIENT_TEST_FAIL) |
+        (result_code & HESSIAN_TEST_LOCAL_MAX)) {
+      // gradient test OR hessian test failed
+      // do nothing :)
+    } else if (result_code & HESSIAN_TEST_LOCAL_MIN) {
+      // gradient test and hessian test passed!
+      // hessian is SPD -> h(x) on interval is convex
+      y_interval_t y_res =
+          narrow_via_bisection(t, x, y_i, params, dims_converged);
+      sresults.minima_intervals.push_back(y_res);
+      result_code |= CONVERGENCE_TEST_PASS;
+    } else if (result_code & CONVERGENCE_TEST_PASS) {
+      // gradient contains zero, hessian test is inconclusive,
+      // but interval cannot be divided, so we save it for use later
+      // if we want to try to analyze these intervals in more detail.
+      sresults.hessian_test_inconclusive.push_back(y_i);
+    } else {
+      // gradient contains zero, hessian test is inconclusive,
+      // but the interval CAN be divided
+      // therefore, we choose to bisect the interval and
+      // continue the search.
+      candidate_intervals = bisect_interval(t, x, y_i, params, dims_converged);
+    }
+    return candidate_intervals;
+  }
+
+  vector<y_interval_t> finalize_minimizers_with_value_test(
+      NUMERIC_T t, NUMERIC_T x, y_interval_t const &y_i, params_t const &params,
+      vector<bool> &dims_converged, size_t &result_code, results_t &sresults) {
+    vector<y_interval_t> candidate_intervals;
+    if ((result_code & GRADIENT_TEST_FAIL) |
+        (result_code & HESSIAN_TEST_LOCAL_MAX)) {
+      // gradient test OR hessian test failed
+      // do nothing :)
+    } else if ((result_code & HESSIAN_TEST_LOCAL_MIN)) {
+      // gradient test and hessian test passed!
+      // hessian is SPD -> h(x) on interval is convex
+      y_interval_t y_res =
+          narrow_via_bisection(t, x, y_i, params, dims_converged);
+      result_code |= CONVERGENCE_TEST_PASS;
+      // we need to narrow and update the bounds
+      interval_t h_res = m_objective.value(t, x, y_i, params);
+      if (h_res.lower() >= sresults.optima_upper_bound) {
+        result_code |= VALUE_TEST_FAIL;
+      } else {
+        sresults.minima_intervals.push_back(y_res);
+      }
+    } else if (result_code & CONVERGENCE_TEST_PASS) {
+      // gradient contains zero, hessian test is inconclusive,
+      // but interval cannot be divided, so we save it for use later
+      // if we want to try to analyze these intervals in more detail.
+      sresults.hessian_test_inconclusive.push_back(y_i);
+    } else {
+      // gradient contains zero, hessian test is inconclusive,
+      // but the interval CAN be divided
+      // therefore, we choose to bisect the interval and
+      // continue the search.
+      candidate_intervals = bisect_interval(t, x, y_i, params, dims_converged);
+    }
+    return candidate_intervals;
+  }
   /**
    * @brief Bisects the n-dimensional range @c x in each dimension that is not
    * flagged in @c dims_converged. Additionally performs a gradient check at the
