@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.42
+# v0.19.46
 
 using Markdown
 using InteractiveUtils
@@ -24,6 +24,7 @@ begin
 	using LinearAlgebra
 	using Plots
 	using PlutoUI
+	using Printf
 	using Unitful
 end
 
@@ -235,17 +236,6 @@ let
 	p
 end
 
-# ╔═╡ 8172aa17-bf51-4a39-a97c-d1bcca261539
-let
-	ts = map(hcat(total_runtime.(with_events), 
-		total_runtime.(only_global))) do v
-		uconvert(u"ms", v)
-	end
-	lines = join([mapreduce(*, r; init="") do v
-			"$v & "
-			end for r ∈ eachrow(ts)], "\\")
-end
-
 # ╔═╡ fc36373b-efb6-475e-975a-4d7dd71f454f
 without_events = map(joinpath(data_file_directory, "se_tracking_noevents_10_minus$(i)_solver_log.tsv") for i=0:(N_RUNS-1)) do file
 	make_data(file) |> simple_ex_err_transform!
@@ -258,7 +248,7 @@ let n = 1
 	scatter!(p, without_events[n].T, without_events[n].X, label=L"x^-", marker=:+, msw=3, ms=6)
 	vline!(p, [-log(0.5)/3], label=L"\tau", ls=:dashdot)
 	# title!(p, "Simple Example; Computed vs. Exact; "*L"dt=%$(time_step_size(with_events[n]))")
-	savefig(p, "../ad2024/gfx/easy_daeo_solution.pdf")
+	#savefig(p, "../ad2024/gfx/easy_daeo_solution.pdf")
 	p
 end
 
@@ -267,8 +257,22 @@ let
 	p = scatter(time_step_size.(with_events), l1_err_simple_ex.(with_events), yscale=:log10, xscale=:log10, grid=true, minorticks=true, marker=:+, ms=8, msw=3, legend=:bottomleft, label="With Event Detection", xlabel=L"\Delta t"; plot_style_kwargs...)
 	scatter!(p, time_step_size.(without_events), l1_err_simple_ex.(without_events), yscale=:log10, xscale=:log10, grid=true, xminorgrid=true, minorticks=:true, marker=:x, ms=8, msw=3, label="Without Event Detection", ylabel=L"\|x^n-x(t^n)\|_{L^1}", xflip=true)
 	plot!(p, [10.0^h for h=0:-1:(-1*(N_RUNS-1))], [t->0.1*t^2], label=L"O(\Delta t^2)", ls=:dashdot)
-	savefig(p, "../ad2024/gfx/easy_daeo_convergence.pdf")
+	#savefig(p, "../ad2024/gfx/easy_daeo_convergence.pdf")
 	p
+end
+
+# ╔═╡ 8172aa17-bf51-4a39-a97c-d1bcca261539
+let
+	ts = map(hcat(total_runtime.(without_events), total_runtime.(with_events), 
+		total_runtime.(only_global))) do v
+		uconvert(u"ms", v)
+	end
+	dts = [@sprintf("%.2e & ", dt) for dt ∈ time_step_size.(with_events)]
+	lines = dts .* [mapreduce(*, r; init="") do v
+			"$(round(typeof(1u"ms"),v)) & "
+			end for r ∈ eachrow(ts)
+		] 
+	Text(join(lines, "\\\\\n"))
 end
 
 # ╔═╡ 7a83ff40-3e20-4603-9653-1685018af095
@@ -300,7 +304,7 @@ let
 	evt_ticks = (real_events, [L"\tau_{%$(i)}" for i∈1:length(real_events)])
 	new_ticks = (old_ticks[1] ∪ evt_ticks[1], old_ticks[2] ∪ evt_ticks[2])
 	xticks!(p, new_ticks)
-	savefig(p, "../ad2024/gfx/hard_daeo_solution.pdf")
+	#savefig(p, "../ad2024/gfx/hard_daeo_solution.pdf")
 	p
 end
 
@@ -330,7 +334,7 @@ let df = gw_data_lowtol
 	#for evt ∈ eachrow(events)
 	#	plot!(p, [evt.T, evt.T], [0, 0.5], ls=:dashdot, lw=1, label=false, color=:black)
 	#end
-	savefig(p, "../ad2024/gfx/hard_daeo_solution_xdot.pdf")
+	#savefig(p, "../ad2024/gfx/hard_daeo_solution_xdot.pdf")
 	p
 end
 
@@ -377,6 +381,7 @@ LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
@@ -393,9 +398,9 @@ Unitful = "~1.19.0"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.10.3"
+julia_version = "1.10.4"
 manifest_format = "2.0"
-project_hash = "dfed254919f094610bf536491d8f7d1baa02d7d7"
+project_hash = "7f5979e078a7b9843535f049a42197ab6b73081e"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
