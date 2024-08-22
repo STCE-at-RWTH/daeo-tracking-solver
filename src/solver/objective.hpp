@@ -7,6 +7,7 @@
 #define _FUNCTION_WRAPPER_HPP
 
 #include <concepts>
+#include <type_traits>
 #include <vector>
 
 // It's recommended to include eigen/boost before DCO
@@ -16,19 +17,40 @@
 
 #include "utils/ntuple.hpp"
 
+template <typename T> struct is_boost_interval : std::false_type {};
+
+template <typename T, typename POLICIES>
+struct is_boost_interval<boost::numeric::interval<T, POLICIES>>
+    : std::true_type {};
+
+template <typename T>
+concept IsInterval = is_boost_interval<T>::value;
+
+template <typename FN, typename T, typename X, typename Y, int YDIMS, int PDIMS>
+concept PreservesIntervalsX =
+    (!IsInterval<X>) ||
+    requires(FN f, T t, X x, Eigen::Vector<Y, YDIMS> const &y,
+             Eigen::Vector<T, PDIMS> const &p) {
+      { f(t, x, y, p) } -> IsInterval;
+    };
+template <typename FN, typename T, typename X, typename Y, int YDIMS, int PDIMS>
+concept PreservesIntervalsY =
+    (!IsInterval<Y>) ||
+    requires(FN f, T t, X x, Eigen::Vector<Y, YDIMS> const &y,
+             Eigen::Vector<T, PDIMS> const &p) {
+      { f(t, x, y, p) } -> IsInterval;
+    };
+
+template <typename FN, typename T, typename X, typename Y, int YDIMS, int PDIMS>
+concept PreservesIntervals = PreservesIntervalsX<FN, T, X, Y, YDIMS, PDIMS> &&
+                             PreservesIntervalsY<FN, T, X, Y, YDIMS, PDIMS>;
+
 /**
- * @brief Wraps a function of the form f(t, x, y, p) for use with the optimizer
- * and solver. Assumes that the return type of f is a scalar and matches the
- * type of scalar y.
+ * @brief Wraps a function of the form f(t, x, y, p) for use with the
+ * optimizer and solver. Assumes that the return type of f is a scalar and
+ * matches the type of scalar y.
  */
-template <typename FN, typename T, typename IVAL_T, int YDIMS, int PDIMS>
-  requires requires(FN f, T t, T x, Eigen::Vector<T, YDIMS> const &y,
-                    Eigen::Vector<IVAL_T, YDIMS> const &y_ival,
-                    Eigen::Vector<T, PDIMS> const &p) {
-             { f(t, x, y, p) } -> std::convertible_to<T>;
-             { f(t, x, y_ival, p) } -> std::convertible_to<IVAL_T>;
-           }
-class DAEOWrappedFunction {
+template <typename FN> class DAEOWrappedFunction {
 
   mutable size_t n_h_evaluations = 0;
   mutable size_t n_dy_evaluations = 0;
@@ -52,7 +74,8 @@ public:
    * @brief Evaluate @c m_fn at the provided arguments.
    * @returns Value of @c m_fn .
    */
-  template <typename NUMERIC_T, typename XT, typename YT>
+  template <typename NUMERIC_T, typename XT, typename YT, int YDIMS, int PDIMS>
+    requires PreservesIntervals<FN, NUMERIC_T, XT, YT, YDIMS, PDIMS>
   auto value(NUMERIC_T const t, XT const x, Eigen::Vector<YT, YDIMS> const &y,
              Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
       -> decltype(wrapped_fn(t, x, y, p)) {
@@ -60,10 +83,9 @@ public:
     return wrapped_fn(t, x, y, p);
   }
 
-  template <typename NUMERIC_T, typename Y_ACTIVE_T>
-  auto grad_y(NUMERIC_T const t, NUMERIC_T const x,
-              Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
-              Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
+  template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS, int PDIMS>
+  auto grad_y(T const t, X const x, Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
+              Eigen::Vector<T, PDIMS> const &p) const
       -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), YDIMS> {
     n_dy_evaluations += 1;
     // define dco types and get a pointer to the tape
@@ -76,10 +98,10 @@ public:
     // if size of y is not known at compile time, we need to set the size
     // explicitly otherwise the Vector<...>(nrows) constructor is a no-op
     Eigen::Vector<active_t, YDIMS> y_active(y.rows());
-    // no vector assignment routines are available for eigen+dco (until dco
-    // base 4.2)
+    // no vector assignment routines are available for eigen+dco
+    // (until dco base 4.2)
     for (int i = 0; i < y.rows(); i++) {
-      dco::value(y_active(i)) = y(i); // eigen accesses done with operator()
+      dco::value(y_active(i)) = y(i);
       tape->register_variable(y_active(i));
     }
     // and active outputs
@@ -95,10 +117,9 @@ public:
     return dhdy;
   }
 
-  template <typename NUMERIC_T, typename X_ACTIVE_T>
-  auto grad_x(NUMERIC_T const t, X_ACTIVE_T const x,
-              Eigen::Vector<NUMERIC_T, YDIMS> const &y,
-              Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
+  template <typename T, typename X_ACTIVE_T, typename Y, int YDIMS, int PDIMS>
+  auto grad_x(T const t, X_ACTIVE_T const x, Eigen::Vector<Y, YDIMS> const &y,
+              Eigen::Vector<T, PDIMS> const &p) const
       -> decltype(wrapped_fn(t, x, y, p)) {
     n_dx_evaluations += 1;
     using dco_mode_t = dco::gt1s<X_ACTIVE_T>;
@@ -111,10 +132,9 @@ public:
     return dco::derivative(h_active);
   }
 
-  template <typename NUMERIC_T, typename Y_ACTIVE_T>
-  auto hess_y(NUMERIC_T const t, NUMERIC_T const x,
-              Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
-              Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
+  template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS, int PDIMS>
+  auto hess_y(T const t, X const x, Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
+              Eigen::Vector<T, PDIMS> const &p) const
       -> Eigen::Matrix<decltype(wrapped_fn(t, x, y, p)), YDIMS, YDIMS> {
     n_d2y_evaluations += 1;
     using dco_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
@@ -151,11 +171,11 @@ public:
     return d2hdy2;
   }
 
-  template <typename NUMERIC_T, typename XY_ACTIVE_T>
-  Eigen::Vector<XY_ACTIVE_T, YDIMS>
-  d2dxdy(NUMERIC_T const t, XY_ACTIVE_T const x,
-         Eigen::Vector<XY_ACTIVE_T, YDIMS> const &y,
-         Eigen::Vector<NUMERIC_T, PDIMS> const &p) const {
+  template <typename T, typename XY_ACTIVE_T, int YDIMS, int PDIMS>
+  auto d2dxdy(T const t, XY_ACTIVE_T const x,
+              Eigen::Vector<XY_ACTIVE_T, YDIMS> const &y,
+              Eigen::Vector<T, PDIMS> const &p) const
+      -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), YDIMS> {
     n_d2xy_evaluations += 1;
     using dco_tangent_t = typename dco::gt1s<XY_ACTIVE_T>::type;
     using dco_mode_t = dco::ga1s<dco_tangent_t>;
@@ -193,5 +213,4 @@ public:
             n_d2y_evaluations, n_d2xy_evaluations};
   }
 };
-
 #endif

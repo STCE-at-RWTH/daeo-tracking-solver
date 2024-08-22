@@ -119,12 +119,8 @@ void griewank_example_event_tolerance_study() {
   solver_t solver4(f, h, opt_s, settings_hightol_noevents);
   double dt = 0.0001;
 
-  auto d2 = [=](auto t, auto x, auto const &y, auto const &p) -> auto{
-    auto m = 2 - 25 * sin(5 * y(0));
-    auto dx = f(t, x, y, p) * dt;
-    return (2 * dx / m);
-  };
-  solver1.solve_daeo(0., 1.5, 0.0001, 1.0, p, d1, "griewank_example_lowtol");
+  //solver1.solve_daeo(0., 1.5, 0.0001, 1.0, p, d1, "griewank_example_lowtol");
+  solver1.solve_daeo(0., 1.5, 0.001, 1.0, p, d1, "griewank_example_bigger_tstep");
   // solver2.solve_daeo(0., 2.0, 0.0001, 1.0, p, d2,
   // "griewank_example_lowtol_drift_est");
 }

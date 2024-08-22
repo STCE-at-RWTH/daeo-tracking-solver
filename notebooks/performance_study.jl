@@ -283,9 +283,6 @@ md"""
 # Griewank Fun
 """
 
-# ╔═╡ 7b308bce-87e0-4856-8b90-e1f367442c7e
-gw_data_hightol = make_data(joinpath(data_file_directory, "griewank_example_hightol_solver_log.tsv"))
-
 # ╔═╡ d0bcd5d9-7ace-4a08-be95-09ab3e818fe7
 gw_data_lowtol = make_data(joinpath(data_file_directory,"griewank_example_lowtol_solver_log.tsv"))
 
@@ -1624,7 +1621,6 @@ version = "1.4.1+1"
 # ╠═a936713d-da19-45de-99e8-b3ab835c2beb
 # ╠═7a83ff40-3e20-4603-9653-1685018af095
 # ╟─689bb63c-7dd7-492d-973c-989b510fa4fc
-# ╠═7b308bce-87e0-4856-8b90-e1f367442c7e
 # ╠═d0bcd5d9-7ace-4a08-be95-09ab3e818fe7
 # ╠═9cc02865-0439-442b-bb62-9f32cb9b48c2
 # ╠═7b461e72-e896-4737-9640-7c050532e010

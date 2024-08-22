@@ -24,18 +24,36 @@ using boost_interval_transc_t = boost::numeric::interval<
            boost::numeric::interval_lib::checking_base<T>>>;
 using double_ival = boost_interval_transc_t<double>;
 
+template <typename T> struct is_boost_interval : std::false_type {};
+
+template <typename T, typename POLICIES>
+struct is_boost_interval<boost::numeric::interval<T, POLICIES>>
+    : std::true_type {};
+
+template <typename T>
+concept IsInterval = is_boost_interval<T>::value;
+
+template <typename FN, typename T>
+concept FnPreservesIvals = requires(FN f, T x) {
+  requires(IsInterval<T>);
+  { f(x) } -> IsInterval;
+};
+
 int main(int argc, char *argv[]) {
   Eigen::VectorXd v1;
   v1 = Eigen::VectorXd::Random(4);
   Eigen::VectorXd v2(4);
   v2 << 1.0, 2.0, 3.0, 4.0;
-  Eigen::VectorXd v3 = v2.binaryExpr(
-      v1, [](auto y, auto z) -> auto{ return y; });
+  Eigen::VectorXd v3 =
+      v2.binaryExpr(v1, [](auto y, auto z) -> auto { return y; });
   fmt::println("{::.4e}", v3);
   Eigen::MatrixXd v4;
   v4 = Eigen::MatrixXd::Random(10, 10);
   fmt::println("{:.4e}", bad_determinant(v4));
   fmt::println("{:d}", 4 & 1);
   fmt::println("{:d}", propagate_dynamic<1, 2>::value);
+
+  fmt::println("{:d} {:d}", is_boost_interval<double>::value,
+               is_boost_interval<boost::numeric::interval<double>>::value);
   return 0;
 }

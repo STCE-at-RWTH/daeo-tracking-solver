@@ -190,7 +190,7 @@ protected:
   /**
    * @brief The objective function h(t, x, y; p) of which to find the minima.
    */
-  DAEOWrappedFunction<FN, NUMERIC_T, interval_t, YDIMS, NPARAMS> m_objective;
+  DAEOWrappedFunction<FN> m_objective;
 
   /**
    * @brief Check if the width of each dimension of @c y_i is smaller than the
