@@ -64,10 +64,10 @@ int main(int argc, char **argv) {
   // we should automatically (hopefully) insert extra variables at the front of
   // y for the lagrange multiplier...
   auto h3 = [](auto t, auto x, auto const &y, auto const &p) {
-    return decltype(y(0))(p(0) * y(0) + p(1) * y(1));
+    return p(0) * y(0) + p(1) * y(1);
   };
   auto g = [](auto t, auto x, auto const &y, auto const &p) {
-    return decltype(y(0))(pow(y(0), 2) + pow(y(1), 2) - p(2));
+    return pow(y(0), 2) + pow(y(1), 2) - p(2);
   };
 
   using opt3_t =

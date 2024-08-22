@@ -16,6 +16,7 @@
 #include "dco.hpp"
 
 #include "utils/ntuple.hpp"
+#include "utils/propagate_dynamic.hpp"
 
 template <typename T> struct is_boost_interval : std::false_type {};
 
@@ -211,6 +212,84 @@ public:
   ntuple<5, size_t> statistics() const {
     return {n_h_evaluations, n_dy_evaluations, n_dx_evaluations,
             n_d2y_evaluations, n_d2xy_evaluations};
+  }
+};
+
+// IDEA
+// we only really care about the behavior behind operator()
+// could we do something like this and then use L(...) to verify the hessian
+// test? could be worth a look!
+template <typename F, typename G> class DAEOWrappedConstrained {
+
+  /**
+   * @brief The wrapped objective function.
+   */
+  F f;
+
+  /**
+   * @brief The wrapped constraint.
+   */
+  G g;
+
+  mutable size_t n_h_evaluations = 0;
+  mutable size_t n_L_evaluations = 0;
+
+  mutable size_t n_dy_evaluations = 0;
+  mutable size_t n_d2y_evaluations = 0;
+  mutable size_t n_dx_evaluations = 0;
+  mutable size_t n_d2xy_evaluations = 0;
+
+  // This return type is clumsy. Need to figure out a way to express
+  // "promote this to a dco type, otherwise promote to an interval, otherwise
+  // return a passive numerical value"
+public:
+  template <typename T, typename XT, typename YT, int YDIMS, int PDIMS>
+    requires PreservesIntervals<F, T, XT, YT, YDIMS, PDIMS>
+  auto objective_value(T const t, XT const x, Eigen::Vector<YT, YDIMS> const &y,
+                       Eigen::Vector<T, PDIMS> const &p) const
+      -> decltype(f(t, x, y, p)) {
+    n_h_evaluations += 1;
+    return f(t, x, y, p);
+  }
+
+  template <typename T, typename XT, typename YT, int YDIMS_EXT, int PDIMS>
+    requires PreservesIntervals<F, T, XT, YT, YDIMS_EXT, PDIMS> &&
+                 PreservesIntervals<G, T, XT, YT, YDIMS_EXT, PDIMS>
+  auto lagrangian_value(
+      T const t, XT const x, Eigen::Vector<YT, YDIMS_EXT> const &y_ext,
+      Eigen::Vector<T, PDIMS> const &p) const -> decltype(f(t, x, y_ext, p)) {
+    using Eigen::seq, Eigen::last;
+    n_L_evaluations += 1;
+    return f(t, x, y_ext(seq(1, last)), p) +
+           y_ext(0) * g(t, x, y_ext(seq(1, last)), p);
+  }
+
+  template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
+  auto norm_dLdy(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
+                 Eigen::Vector<T, PDIMS> const &p) const {
+    // using res_t = decltype(L(t, x, y, p));
+    using dco_mode_t = dco::gt1s<Y>;
+    using active_t = typename dco_mode_t::type;
+    Eigen::Vector<active_t, YDIMS> y_active(y.rows());
+    for (size_t i = 0; i < y.rows(); i++) {
+      dco::value(y_active(i)) = y(i);
+    }
+    // "why" does this work?!
+    Eigen::Vector<Y, YDIMS> res(y.rows());
+    for (size_t i = 1; i < y.rows(); i++) {
+      dco::derivative(y_active(i)) = 1.0;
+      active_t L_val = L(t, x, y_active, p);
+      res(i) = pow(dco::derivative(L_val), 2);
+      dco::derivative(y_active(i)) = 0;
+    }
+    return res.sum();
+  }
+
+
+  template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
+  auto operator()(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
+                  Eigen::Vector<T, PDIMS> const &p) const {
+    return norm_dLdy(t, x, y, p);
   }
 };
 #endif

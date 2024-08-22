@@ -579,50 +579,6 @@ protected:
   }
 };
 
-// IDEA
-// we only really care about the behavior behind operator()
-// could we do something like this and then use L(...) to verify the hessian
-// test? could be worth a look!
-template <typename F, typename G> struct constraint_detail {
-  F f;
-  G g;
-  template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
-  auto L(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-         Eigen::Vector<T, PDIMS> const &p) const {
-    Eigen::Vector<Y, propagate_dynamic_v<YDIMS, YDIMS - 1>> y_slice(y.rows() -
-                                                                    1);
-    y_slice = y(Eigen::seq(1, Eigen::last));
-    return f(t, x, y_slice, p) + y(0) * g(t, x, y_slice, p);
-  }
-
-  template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
-  auto norm_dLdy(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-                Eigen::Vector<T, PDIMS> const &p) const {
-    // using res_t = decltype(L(t, x, y, p));
-    using dco_mode_t = dco::gt1s<Y>;
-    using active_t = typename dco_mode_t::type;
-    Eigen::Vector<active_t, YDIMS> y_active(y.rows());
-    for (size_t i = 0; i < y.rows(); i++) {
-      dco::value(y_active(i)) = y(i);
-    }
-    // "why" does this work?!
-    Eigen::Vector<Y, YDIMS> res(y.rows());
-    for (size_t i = 1; i < y.rows(); i++) {
-      dco::derivative(y_active(i)) = 1.0;
-      active_t L_val = L(t, x, y_active, p);
-      res(i) = pow(dco::derivative(L_val), 2);
-      dco::derivative(y_active(i)) = 0;
-    }
-    return res.sum();
-  }
-
-  template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
-  auto operator()(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-                  Eigen::Vector<T, PDIMS> const &p) const {
-    return norm_dLdy(t, x, y, p);
-  }
-};
-
 template <typename OBJECTIVE, typename CONSTRAINT, typename NUMERIC_T = double,
           typename POLICIES = suggested_interval_policies<NUMERIC_T>,
           int YDIMS = Eigen::Dynamic, int NPARAMS = Eigen::Dynamic>

@@ -45,7 +45,8 @@ add_compile_definitions(
   GFX_PATH="${GFX_PATH}"
 )
 
-add_compile_options(-fsanitize-address)
+# clang address sanitizer
+# add_compile_options(-fsanitize-address)
 
 # get boost interval from the submodule
 include_directories(interval/include)
