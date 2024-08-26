@@ -224,20 +224,21 @@ template <typename F, typename G> class DAEOWrappedConstrained {
   /**
    * @brief The wrapped objective function.
    */
-  F f;
+  F m_objective;
 
   /**
    * @brief The wrapped constraint.
    */
-  G g;
+  G m_constraint;
 
   mutable size_t n_h_evaluations = 0;
-  mutable size_t n_L_evaluations = 0;
-
   mutable size_t n_dy_evaluations = 0;
   mutable size_t n_d2y_evaluations = 0;
   mutable size_t n_dx_evaluations = 0;
   mutable size_t n_d2xy_evaluations = 0;
+
+  mutable size_t n_L_evaluations = 0;
+  mutable size_t n_dLdy = 0;
 
   // This return type is clumsy. Need to figure out a way to express
   // "promote this to a dco type, otherwise promote to an interval, otherwise
@@ -247,44 +248,145 @@ public:
     requires PreservesIntervals<F, T, XT, YT, YDIMS, PDIMS>
   auto objective_value(T const t, XT const x, Eigen::Vector<YT, YDIMS> const &y,
                        Eigen::Vector<T, PDIMS> const &p) const
-      -> decltype(f(t, x, y, p)) {
+      -> decltype(m_objective(t, x, y, p)) {
     n_h_evaluations += 1;
-    return f(t, x, y, p);
+    return m_objective(t, x, y, p);
   }
 
   template <typename T, typename XT, typename YT, int YDIMS_EXT, int PDIMS>
     requires PreservesIntervals<F, T, XT, YT, YDIMS_EXT, PDIMS> &&
                  PreservesIntervals<G, T, XT, YT, YDIMS_EXT, PDIMS>
-  auto lagrangian_value(
-      T const t, XT const x, Eigen::Vector<YT, YDIMS_EXT> const &y_ext,
-      Eigen::Vector<T, PDIMS> const &p) const -> decltype(f(t, x, y_ext, p)) {
+  auto value(T const t, XT const x, Eigen::Vector<YT, YDIMS_EXT> const &y_ext,
+             Eigen::Vector<T, PDIMS> const &p) const
+      -> decltype(m_objective(t, x, y_ext, p)) {
     using Eigen::seq, Eigen::last;
     n_L_evaluations += 1;
-    return f(t, x, y_ext(seq(1, last)), p) +
-           y_ext(0) * g(t, x, y_ext(seq(1, last)), p);
+    return m_objective(t, x, y_ext(seq(1, last)), p) +
+           y_ext(0) * m_constraint(t, x, y_ext(seq(1, last)), p);
   }
 
-  template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
-  auto norm_dLdy(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-                 Eigen::Vector<T, PDIMS> const &p) const {
-    // using res_t = decltype(L(t, x, y, p));
-    using dco_mode_t = dco::gt1s<Y>;
+  template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS_EXT,
+            int PDIMS>
+  auto grad_y(T const t, X const x,
+              Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
+              Eigen::Vector<T, PDIMS> const &p) const
+      -> Eigen::Vector<decltype(m_objective(t, x, y, p)), YDIMS_EXT> {
+    n_dy_evaluations += 1;
+    // define dco types and get a pointer to the tape
+    // unsure how to use ga1sm to expand this to multithreaded programs
+    using dco_mode_t = dco::ga1s<Y_ACTIVE_T>;
     using active_t = typename dco_mode_t::type;
-    Eigen::Vector<active_t, YDIMS> y_active(y.rows());
-    for (size_t i = 0; i < y.rows(); i++) {
+    dco::smart_tape_ptr_t<dco_mode_t> tape;
+    tape->reset();
+    Eigen::Vector<active_t, YDIMS_EXT> y_active(y.rows());
+    for (int i = 0; i < y.rows(); i++) {
       dco::value(y_active(i)) = y(i);
+      tape->register_variable(y_active(i));
     }
-    // "why" does this work?!
-    Eigen::Vector<Y, YDIMS> res(y.rows());
-    for (size_t i = 1; i < y.rows(); i++) {
-      dco::derivative(y_active(i)) = 1.0;
-      active_t L_val = L(t, x, y_active, p);
-      res(i) = pow(dco::derivative(L_val), 2);
-      dco::derivative(y_active(i)) = 0;
+    // and active outputs
+    active_t L_active = value(t, x, y_active, p);
+    tape->register_output_variable(L_active);
+    dco::derivative(L_active) = 1;
+    tape->interpret_adjoint();
+    // harvest derivative
+    Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> dLdy(y.rows());
+    for (int i = 0; i < y.rows(); i++) {
+      dLdy(i) = dco::derivative(y_active(i));
     }
-    return res.sum();
+    return dLdy;
   }
 
+  template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS_EXT,
+            int PDIMS>
+  auto hess_y(T const t, X const x,
+              Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
+              Eigen::Vector<T, PDIMS> const &p) const
+      -> Eigen::Matrix<decltype(m_objective(t, x, y, p)), YDIMS_EXT,
+                       YDIMS_EXT> {
+    n_d2y_evaluations += 1;
+
+    using dco_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
+    using dco_mode_t = dco::ga1s<dco_tangent_t>;
+    using active_t = typename dco_mode_t::type;
+    dco::smart_tape_ptr_t<dco_mode_t> tape;
+    tape->reset();
+
+    active_t L_active;
+    Eigen::Vector<active_t, YDIMS_EXT> y_active(y.rows());
+    for (int i = 0; i < y.rows(); i++) {
+      dco::passive_value(y_active(i)) = y(i);
+      tape->register_variable(y_active(i));
+    }
+    auto start_position = tape->get_position();
+    Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT> d2Ldy2(y.rows(), y.rows());
+    for (int hrow = 0; hrow < y.rows(); hrow++) {
+      dco::derivative(dco::value(y_active(hrow))) = 1; // wiggle y[hrow]
+      L_active = value(t, x, y_active, p);             // compute h
+      // set sensitivity to wobbles in h to 1
+      dco::value(dco::derivative(L_active)) = 1;
+      tape->interpret_adjoint_and_reset_to(start_position);
+      for (int hcol = 0; hcol < y.rows(); hcol++) {
+        d2Ldy2(hrow, hcol) = dco::derivative(dco::derivative(y_active[hcol]));
+        // reset any accumulated values in 
+        dco::derivative(dco::derivative(y_active(hcol))) = 0;
+        dco::value(dco::derivative(y_active(hcol))) = 0;
+      }
+      // no longer wiggling y[hrow]
+      dco::derivative(dco::value(y_active(hrow))) = 0;
+    }
+    return d2Ldy2;
+  }
+
+  template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS_EXT,
+            int PDIMS>
+  auto grad_y_norm_L(T const t, X const x,
+                     Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
+                     Eigen::Vector<T, PDIMS> const &p) const
+      -> Eigen::Vector<decltype(m_objective(t, x, y, p)), YDIMS_EXT> {
+
+    // is possible to write a reasonable driver for this, tbh
+    using dco_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
+    using dco_mode_t = dco::ga1s<dco_tangent_t>;
+    using active_t = typename dco_mode_t::type;
+    dco::smart_tape_ptr_t<dco_mode_t> tape;
+    tape->reset();
+
+    active_t L_active;
+    Eigen::Vector<active_t, YDIMS_EXT> y_active(y.rows());
+    for (int i = 0; i < y.rows(); i++) {
+      dco::passive_value(y_active(i)) = y(i);
+      tape->register_variable(y_active(i));
+    }
+    auto start_position = tape->get_position();
+    Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> dLdy(y.rows());
+    Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT> d2Ldy2(y.rows(), y.rows());
+    for (int hrow = 0; hrow < y.rows(); hrow++) {
+      dco::derivative(dco::value(y_active(hrow))) = 1; // wiggle y[hrow]
+      L_active = value(t, x, y_active, p);             // compute h
+      // set sensitivity to wobbles in h to 1
+      dco::value(dco::derivative(L_active)) = 1;
+      tape->interpret_adjoint_and_reset_to(start_position);
+      for (int hcol = 0; hcol < y.rows(); hcol++) {
+        d2Ldy2(hrow, hcol) = dco::derivative(dco::derivative(y_active[hcol]));
+        dLdy(hcol) = dco::derivative(dco::value(y_active[hcol]));
+        // reset any accumulated values
+        dco::derivative(dco::derivative(y_active(hcol))) = 0;
+        dco::value(dco::derivative(y_active(hcol))) = 0;
+      }
+      // no longer wiggling y[hrow]
+      dco::derivative(dco::value(y_active(hrow))) = 0;
+    }
+    return d2Ldy2;
+  }
+
+  template <typename T, typename X, typename Y, int YDIMS_EXT, int PDIMS>
+  auto norm_dLdy(T t, X x, Eigen::Vector<Y, YDIMS_EXT> const &y,
+                 Eigen::Vector<T, PDIMS> const &p) const
+      -> decltype(m_objective(t, x, y, p)) {
+    Eigen::Vector<decltype(m_objective(t, x, y, p)), YDIMS_EXT> dLdY =
+        grad_y(t, x, y, p);
+    return dLdY.norm();
+  }
 
   template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
   auto operator()(T t, X x, Eigen::Vector<Y, YDIMS> const &y,

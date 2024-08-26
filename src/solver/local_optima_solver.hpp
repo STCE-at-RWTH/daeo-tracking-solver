@@ -42,8 +42,7 @@ struct BNBOptimizerResults {
   NUMERIC_T optima_upper_bound = std::numeric_limits<NUMERIC_T>::max();
 
   /**
-   * @brief List of intervals that the optimizer definitely determined to
-   * contain the desired results.
+   * @brief List of intervals that the optimizer has determined to contain local minima
    */
   vector<Eigen::Vector<INTERVAL_T, YDIMS>> minima_intervals;
 
