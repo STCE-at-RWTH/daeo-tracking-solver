@@ -5,7 +5,6 @@
 
 #include "Eigen/Dense"
 #include "boost/numeric/interval.hpp"
-
 #include "eigen_interval_extensions.hpp"
 
 /**

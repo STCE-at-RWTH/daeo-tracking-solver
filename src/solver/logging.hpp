@@ -21,7 +21,7 @@
 #include "fmt/ostream.h"
 #include "fmt/ranges.h"
 
-#include "utils/fmt_extensions.hpp"
+#include "utils/daeo_utils.hpp"
 
 using std::vector;
 
@@ -39,20 +39,7 @@ enum OptimizerEventCode {
 
 inline auto format_as(OptimizerEventCode evc) { return fmt::underlying(evc); }
 
-enum OptimizerTestCode {
-  CONVERGENCE_TEST_INCONCLUSIVE = 0,
-  CONVERGENCE_TEST_PASS = 1,
-  VALUE_TEST_FAIL = 2,
-  GRADIENT_TEST_FAIL = 4,
-  GRADIENT_TEST_PASS = 8,
-  HESSIAN_TEST_LOCAL_MAX = 16,
-  HESSIAN_MAYBE_INDEFINITE = 32,
-  HESSIAN_TEST_LOCAL_MIN = 64,
-  CONSTRAINT_INFEASIBLE = 128,
-  CONSTRAINT_FEASIBLE = 256,
-};
 
-inline auto format_as(OptimizerTestCode evc) { return fmt::underlying(evc); }
 
 constexpr char OPTIMIZER_LOG_COLUMNS[]{
     "TASKNUM\tTSTAMP\tEVENTID\tEXTRACODE\tX\tH\tDHDX\tD2HDX2\tCONVERGENCE"};

@@ -210,8 +210,8 @@ public:
         next.i_star = min_idx;
         event_found = next.i_star != current.i_star;
         if (event_found &&
-            (m_objective.value(next.t, next.x, next.y_star(), params) >=
-             m_objective.value(next.t, next.x, next.y[current.i_star],
+            (m_objective.objective_value(next.t, next.x, next.y_star(), params) >=
+             m_objective.objective_value(next.t, next.x, next.y[current.i_star],
                                params))) {
           fmt::println("  wtf");
         }
@@ -228,9 +228,9 @@ public:
             "  Detected global optimzer switch between (t={:.6e}, "
             "y={::.4e}, h={:.4e}) and (t={:.6e}, y={::.4e}, h={:.4e})",
             current.t, current.y_star(),
-            m_objective.value(current.t, current.x, current.y_star(), params),
+            m_objective.objective_value(current.t, current.x, current.y_star(), params),
             next.t, next.y_star(),
-            m_objective.value(next.t, next.x, next.y_star(), params));
+            m_objective.objective_value(next.t, next.x, next.y_star(), params));
         fmt::println("    Jump size is {:.6e}",
                      (current.y_star() - next.y_star()).norm());
 
@@ -339,7 +339,7 @@ private:
     NUMERIC_T h_star = std::numeric_limits<NUMERIC_T>::max();
     size_t i_star = 0;
     for (size_t i = 0; i < s.n_local_optima(); i++) {
-      NUMERIC_T h = m_objective.value(s.t, s.x, s.y[i], p);
+      NUMERIC_T h = m_objective.objective_value(s.t, s.x, s.y[i], p);
       if (h < h_star) {
         h_star = h;
         i_star = i;
@@ -360,7 +360,7 @@ private:
    * @brief Use the implicit function theorem to estimate dydt.
    */
   vector<y_t> estimate_dydt(solution_state_t const &s, params_t const &p) {
-    auto dxdt = m_xprime.value(s.t, s.x, s.y_star(), p);
+    auto dxdt = m_xprime.objective_value(s.t, s.x, s.y_star(), p);
     vector<y_t> res(s.y.size());
     for (size_t i = 0; i < s.y.size(); i++) {
       auto d2hdyx = m_objective.d2dxdy(s.t, s.x, s.y[i], p);
@@ -489,8 +489,8 @@ private:
     Eigen::VectorX<NUMERIC_T> result(1 + start.n_local_optima() * ydims);
     result(0) = start.x - guess.x +
                 dt / 2 *
-                    (m_xprime.value(start.t, start.x, start.y[i_star], p) +
-                     m_xprime.value(guess.t, guess.x, guess.y[i_star], p));
+                    (m_xprime.objective_value(start.t, start.x, start.y[i_star], p) +
+                     m_xprime.objective_value(guess.t, guess.x, guess.y[i_star], p));
     for (size_t i = 0; i < start.n_local_optima(); i++) {
       result(Eigen::seqN(1 + i * ydims, ydims)) =
           m_objective.grad_y(guess.t, guess.x, guess.y[i], p);
@@ -584,7 +584,7 @@ private:
    */
   inline NUMERIC_T event_function(NUMERIC_T t, NUMERIC_T x, y_t const &y1,
                                   y_t const &y2, params_t const &p) {
-    return m_objective.value(t, x, y1, p) - m_objective.value(t, x, y2, p);
+    return m_objective.objective_value(t, x, y1, p) - m_objective.objective_value(t, x, y2, p);
   }
 
   /**
@@ -645,7 +645,7 @@ private:
       guess.i_star = compute_global_minimizer(guess, p);
       dHdt = (event_function_ddx(guess.t, guess.x, guess.y[left.i_star],
                                  guess.y[right.i_star], p) *
-              m_xprime.value(guess.t, guess.x, guess.y_star(), p));
+              m_xprime.objective_value(guess.t, guess.x, guess.y_star(), p));
       // dHdt += partial h partial t at y1 and y2... maybe not necessary.
       // newton iteration.
       guess.t -= H / dHdt;

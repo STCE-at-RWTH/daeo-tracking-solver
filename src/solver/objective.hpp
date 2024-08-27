@@ -15,8 +15,7 @@
 #include "boost/numeric/interval.hpp"
 #include "dco.hpp"
 
-#include "utils/ntuple.hpp"
-#include "utils/propagate_dynamic.hpp"
+#include "utils/daeo_utils.hpp"
 
 template <typename T> struct is_boost_interval : std::false_type {};
 
@@ -77,8 +76,9 @@ public:
    */
   template <typename NUMERIC_T, typename XT, typename YT, int YDIMS, int PDIMS>
     requires PreservesIntervals<FN, NUMERIC_T, XT, YT, YDIMS, PDIMS>
-  auto value(NUMERIC_T const t, XT const x, Eigen::Vector<YT, YDIMS> const &y,
-             Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
+  auto objective_value(NUMERIC_T const t, XT const x,
+                       Eigen::Vector<YT, YDIMS> const &y,
+                       Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
       -> decltype(wrapped_fn(t, x, y, p)) {
     n_h_evaluations += 1;
     return wrapped_fn(t, x, y, p);
@@ -89,15 +89,11 @@ public:
               Eigen::Vector<T, PDIMS> const &p) const
       -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), YDIMS> {
     n_dy_evaluations += 1;
-    // define dco types and get a pointer to the tape
-    // unsure how to use ga1sm to expand this to multithreaded programs
     using dco_mode_t = dco::ga1s<Y_ACTIVE_T>;
     using active_t = typename dco_mode_t::type;
     dco::smart_tape_ptr_t<dco_mode_t> tape;
     tape->reset();
-    // define active inputs
-    // if size of y is not known at compile time, we need to set the size
-    // explicitly otherwise the Vector<...>(nrows) constructor is a no-op
+    // active inputs
     Eigen::Vector<active_t, YDIMS> y_active(y.rows());
     // no vector assignment routines are available for eigen+dco
     // (until dco base 4.2)
@@ -142,13 +138,18 @@ public:
     using dco_mode_t = dco::ga1s<dco_tangent_t>;
     using active_t = typename dco_mode_t::type;
     dco::smart_tape_ptr_t<dco_mode_t> tape;
-    active_t h_active;
+    tape->reset();
+
+    // active inputs
     Eigen::Vector<active_t, YDIMS> y_active(y.rows());
     for (int i = 0; i < y.rows(); i++) {
       dco::passive_value(y_active(i)) = y(i);
       tape->register_variable(y_active(i));
     }
     auto start_position = tape->get_position();
+
+    // active outputs
+    active_t h_active;
     // Hessian of a scalar function is a symmetric square matrix (provided
     // second derivative symmetry holds)
     Eigen::Matrix<Y_ACTIVE_T, YDIMS, YDIMS> d2hdy2(y.rows(), y.rows());
@@ -232,13 +233,13 @@ template <typename F, typename G> class DAEOWrappedConstrained {
   G m_constraint;
 
   mutable size_t n_h_evaluations = 0;
-  mutable size_t n_dy_evaluations = 0;
-  mutable size_t n_d2y_evaluations = 0;
-  mutable size_t n_dx_evaluations = 0;
-  mutable size_t n_d2xy_evaluations = 0;
+  mutable size_t n_dhdy_evaluations = 0;
+  mutable size_t n_d2hdy2_evaluations = 0;
+  mutable size_t n_dhdx_evaluations = 0;
+  mutable size_t n_d2hdxdy_evaluations = 0;
 
   mutable size_t n_L_evaluations = 0;
-  mutable size_t n_dLdy = 0;
+  mutable size_t n_dLdy_evaluations = 0;
 
   // This return type is clumsy. Need to figure out a way to express
   // "promote this to a dco type, otherwise promote to an interval, otherwise
@@ -256,8 +257,9 @@ public:
   template <typename T, typename XT, typename YT, int YDIMS_EXT, int PDIMS>
     requires PreservesIntervals<F, T, XT, YT, YDIMS_EXT, PDIMS> &&
                  PreservesIntervals<G, T, XT, YT, YDIMS_EXT, PDIMS>
-  auto value(T const t, XT const x, Eigen::Vector<YT, YDIMS_EXT> const &y_ext,
-             Eigen::Vector<T, PDIMS> const &p) const
+  auto lagrangian_value(T const t, XT const x,
+                        Eigen::Vector<YT, YDIMS_EXT> const &y_ext,
+                        Eigen::Vector<T, PDIMS> const &p) const
       -> decltype(m_objective(t, x, y_ext, p)) {
     using Eigen::seq, Eigen::last;
     n_L_evaluations += 1;
@@ -267,11 +269,11 @@ public:
 
   template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS_EXT,
             int PDIMS>
-  auto grad_y(T const t, X const x,
-              Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
-              Eigen::Vector<T, PDIMS> const &p) const
+  auto grad_y_lagrangian(T const t, X const x,
+                         Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
+                         Eigen::Vector<T, PDIMS> const &p) const
       -> Eigen::Vector<decltype(m_objective(t, x, y, p)), YDIMS_EXT> {
-    n_dy_evaluations += 1;
+    n_dhdy_evaluations += 1;
     // define dco types and get a pointer to the tape
     // unsure how to use ga1sm to expand this to multithreaded programs
     using dco_mode_t = dco::ga1s<Y_ACTIVE_T>;
@@ -283,8 +285,7 @@ public:
       dco::value(y_active(i)) = y(i);
       tape->register_variable(y_active(i));
     }
-    // and active outputs
-    active_t L_active = value(t, x, y_active, p);
+    active_t L_active = lagrangian_value(t, x, y_active, p);
     tape->register_output_variable(L_active);
     dco::derivative(L_active) = 1;
     tape->interpret_adjoint();
@@ -298,12 +299,12 @@ public:
 
   template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS_EXT,
             int PDIMS>
-  auto hess_y(T const t, X const x,
-              Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
-              Eigen::Vector<T, PDIMS> const &p) const
+  auto hess_y_lagrangian(T const t, X const x,
+                         Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
+                         Eigen::Vector<T, PDIMS> const &p) const
       -> Eigen::Matrix<decltype(m_objective(t, x, y, p)), YDIMS_EXT,
                        YDIMS_EXT> {
-    n_d2y_evaluations += 1;
+    n_d2hdy2_evaluations += 1;
 
     using dco_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
     using dco_mode_t = dco::ga1s<dco_tangent_t>;
@@ -321,13 +322,13 @@ public:
     Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT> d2Ldy2(y.rows(), y.rows());
     for (int hrow = 0; hrow < y.rows(); hrow++) {
       dco::derivative(dco::value(y_active(hrow))) = 1; // wiggle y[hrow]
-      L_active = value(t, x, y_active, p);             // compute h
+      L_active = lagrangian_value(t, x, y_active, p);  // compute h
       // set sensitivity to wobbles in h to 1
       dco::value(dco::derivative(L_active)) = 1;
       tape->interpret_adjoint_and_reset_to(start_position);
       for (int hcol = 0; hcol < y.rows(); hcol++) {
         d2Ldy2(hrow, hcol) = dco::derivative(dco::derivative(y_active[hcol]));
-        // reset any accumulated values in 
+        // reset any accumulated values in
         dco::derivative(dco::derivative(y_active(hcol))) = 0;
         dco::value(dco::derivative(y_active(hcol))) = 0;
       }
@@ -337,12 +338,14 @@ public:
     return d2Ldy2;
   }
 
+  // someone needs to fix the return types in this file (not me)
   template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS_EXT,
             int PDIMS>
-  auto grad_y_norm_L(T const t, X const x,
-                     Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
-                     Eigen::Vector<T, PDIMS> const &p) const
-      -> Eigen::Vector<decltype(m_objective(t, x, y, p)), YDIMS_EXT> {
+  auto
+  grad_y_norm_grad_y_lagrangian(T const t, X const x,
+                                Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
+                                Eigen::Vector<T, PDIMS> const &p) const
+      -> Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> {
 
     // is possible to write a reasonable driver for this, tbh
     using dco_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
@@ -362,13 +365,14 @@ public:
     Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT> d2Ldy2(y.rows(), y.rows());
     for (int hrow = 0; hrow < y.rows(); hrow++) {
       dco::derivative(dco::value(y_active(hrow))) = 1; // wiggle y[hrow]
-      L_active = value(t, x, y_active, p);             // compute h
+      L_active = lagrangian_value(t, x, y_active, p);  // compute h
       // set sensitivity to wobbles in h to 1
       dco::value(dco::derivative(L_active)) = 1;
       tape->interpret_adjoint_and_reset_to(start_position);
+      dLdy(hrow) = dco::value(dco::derivative(L_active)); // harvest L^(2)
       for (int hcol = 0; hcol < y.rows(); hcol++) {
+        // harvest y^(2)_(1)
         d2Ldy2(hrow, hcol) = dco::derivative(dco::derivative(y_active[hcol]));
-        dLdy(hcol) = dco::derivative(dco::value(y_active[hcol]));
         // reset any accumulated values
         dco::derivative(dco::derivative(y_active(hcol))) = 0;
         dco::value(dco::derivative(y_active(hcol))) = 0;
@@ -376,15 +380,19 @@ public:
       // no longer wiggling y[hrow]
       dco::derivative(dco::value(y_active(hrow))) = 0;
     }
-    return d2Ldy2;
+    
+    // Hessian is symmetric... I doubt this transpose has significant cost, though.
+    Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> res(y.rows());
+    res = 2 * d2Ldy2.transpose() * dLdy;
+    return res;
   }
 
   template <typename T, typename X, typename Y, int YDIMS_EXT, int PDIMS>
   auto norm_dLdy(T t, X x, Eigen::Vector<Y, YDIMS_EXT> const &y,
                  Eigen::Vector<T, PDIMS> const &p) const
       -> decltype(m_objective(t, x, y, p)) {
-    Eigen::Vector<decltype(m_objective(t, x, y, p)), YDIMS_EXT> dLdY =
-        grad_y(t, x, y, p);
+    using eltype = decltype(m_objective(t, x, y, p));
+    Eigen::Vector<eltype, YDIMS_EXT> dLdY = grad_y_lagrangian(t, x, y, p);
     return dLdY.norm();
   }
 
