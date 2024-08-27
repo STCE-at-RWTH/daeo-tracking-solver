@@ -53,13 +53,6 @@ struct BNBOptimizerResults {
   vector<Eigen::Vector<INTERVAL_T, YDIMS>> hessian_test_inconclusive;
 };
 
-template <typename T, typename POLICIES>
-bool zero_in_or_absolutely_near(boost::numeric::interval<T, POLICIES> y,
-                                T tol) {
-  return boost::numeric::zero_in(y) ||
-         (fabs(y.lower()) < tol && fabs(y.upper()) < tol);
-}
-
 template <typename FN, typename NUMERIC_T = double,
           typename POLICIES = suggested_interval_policies<double>,
           int YDIMS = Eigen::Dynamic, int NPARAMS = Eigen::Dynamic>
@@ -177,7 +170,7 @@ protected:
     interval_t h;
     size_t i_star = 0;
     for (size_t i = 0; i < sresults.minima_intervals.size(); i++) {
-      h = m_objective.value(t, x, sresults.minima_intervals[i], params);
+      h = m_objective.objective_value(t, x, sresults.minima_intervals[i], params);
       if (h.upper() < h_max) {
         h_max = h.upper();
         i_star = i;
@@ -319,7 +312,7 @@ protected:
           narrow_via_bisection(t, x, y_i, params, dims_converged);
       result_code |= CONVERGENCE_TEST_PASS;
       // we need to narrow and update the bounds
-      interval_t h_res = m_objective.value(t, x, y_i, params);
+      interval_t h_res = m_objective.objective_value(t, x, y_i, params);
       if (h_res.lower() >= sresults.optima_upper_bound) {
         result_code |= VALUE_TEST_FAIL;
       } else {
@@ -339,6 +332,7 @@ protected:
     }
     return candidate_intervals;
   }
+
   /**
    * @brief Bisects the n-dimensional range @c x in each dimension that is not
    * flagged in @c dims_converged. Additionally performs a gradient check at the
