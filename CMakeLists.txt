@@ -71,6 +71,10 @@ add_executable(optimizer src/bnb-optimizer-demo.cpp
 target_include_directories(optimizer PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(optimizer PRIVATE NAG::dco_cpp fmt::fmt)
 
+add_executable(ad2024 src/ad2024-demo.cpp ${objective_headers} ${bnb_solver_headers} ${daeo_solver_headers})
+target_include_directories(ad2024 PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
+target_link_libraries(ad2024 PRIVATE NAG::dco_cpp fmt::fmt)
+
 add_executable(main src/main.cpp ${bnb_solver_headers})
 target_include_directories(main PUBLIC src/include ${NAG_dco_cpp_INCLUDE_DIRS})
 target_link_libraries(main PRIVATE NAG::dco_cpp fmt::fmt)

@@ -24,24 +24,28 @@ struct is_boost_interval<boost::numeric::interval<T, POLICIES>>
 template <typename T>
 concept IsInterval = is_boost_interval<T>::value;
 
-template <typename FN, typename T, typename X, typename Y, int YDIMS, int PDIMS>
+template <typename FN, typename T, typename X, typename Y, int XDIMS, int YDIMS,
+          int PDIMS>
 concept PreservesIntervalsX =
-    (!IsInterval<X>) ||
-    requires(FN f, T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-             Eigen::Vector<T, PDIMS> const &p) {
+    (!IsInterval<X>) || requires(FN f, T t, Eigen::Vector<X, XDIMS> const &x,
+                                 Eigen::Vector<Y, YDIMS> const &y,
+                                 Eigen::Vector<T, PDIMS> const &p) {
       { f(t, x, y, p) } -> IsInterval;
     };
-template <typename FN, typename T, typename X, typename Y, int YDIMS, int PDIMS>
+template <typename FN, typename T, typename X, typename Y, int XDIMS, int YDIMS,
+          int PDIMS>
 concept PreservesIntervalsY =
-    (!IsInterval<Y>) ||
-    requires(FN f, T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-             Eigen::Vector<T, PDIMS> const &p) {
+    (!IsInterval<Y>) || requires(FN f, T t, Eigen::Vector<X, XDIMS> x,
+                                 Eigen::Vector<Y, YDIMS> const &y,
+                                 Eigen::Vector<T, PDIMS> const &p) {
       { f(t, x, y, p) } -> IsInterval;
     };
 
-template <typename FN, typename T, typename X, typename Y, int YDIMS, int PDIMS>
-concept PreservesIntervals = PreservesIntervalsX<FN, T, X, Y, YDIMS, PDIMS> &&
-                             PreservesIntervalsY<FN, T, X, Y, YDIMS, PDIMS>;
+template <typename FN, typename T, typename X, typename Y, int XDIMS, int YDIMS,
+          int PDIMS>
+concept PreservesIntervals =
+    PreservesIntervalsX<FN, T, X, Y, XDIMS, YDIMS, PDIMS> &&
+    PreservesIntervalsY<FN, T, X, Y, XDIMS, YDIMS, PDIMS>;
 
 /**
  * @brief Wraps a function of the form f(t, x, y, p) for use with the
@@ -72,9 +76,10 @@ public:
    * @brief Evaluate @c m_fn at the provided arguments.
    * @returns Value of @c m_fn .
    */
-  template <typename NUMERIC_T, typename XT, typename YT, int YDIMS, int PDIMS>
-    requires PreservesIntervals<FN, NUMERIC_T, XT, YT, YDIMS, PDIMS>
-  auto objective_value(NUMERIC_T const t, XT const x,
+  template <typename NUMERIC_T, typename XT, typename YT, int XDIMS, int YDIMS,
+            int PDIMS>
+    requires PreservesIntervals<FN, NUMERIC_T, XT, YT, XDIMS, YDIMS, PDIMS>
+  auto objective_value(NUMERIC_T const t, Eigen::Vector<XT, XDIMS> const &x,
                        Eigen::Vector<YT, YDIMS> const &y,
                        Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
       -> decltype(wrapped_fn(t, x, y, p)) {
@@ -82,53 +87,63 @@ public:
     return wrapped_fn(t, x, y, p);
   }
 
-  template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS, int PDIMS>
-  auto grad_y(T const t, X const x, Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
+  template <typename T, typename X, typename Y_ACTIVE_T, int XDIMS, int YDIMS,
+            int PDIMS>
+  auto grad_y(T const t, Eigen::Vector<X, XDIMS> const &x,
+              Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
               Eigen::Vector<T, PDIMS> const &p) const
       -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), YDIMS> {
     n_dy_evaluations += 1;
-    using dco_mode_t = dco::ga1s<Y_ACTIVE_T>;
+    using dco_mode_t = dco::gt1s<Y_ACTIVE_T>;
     using active_t = typename dco_mode_t::type;
-    dco::smart_tape_ptr_t<dco_mode_t> tape;
-    tape->reset();
     // active inputs
     Eigen::Vector<active_t, YDIMS> y_active(y.rows());
     // no vector assignment routines are available for eigen+dco
     // (until dco base 4.2)
     for (int i = 0; i < y.rows(); i++) {
       dco::value(y_active(i)) = y(i);
-      tape->register_variable(y_active(i));
     }
     // and active outputs
-    active_t h_active = wrapped_fn(t, x, y_active, p);
-    tape->register_output_variable(h_active);
-    dco::derivative(h_active) = 1;
-    tape->interpret_adjoint();
+    active_t h_active;
     // harvest derivative
     Eigen::Vector<Y_ACTIVE_T, YDIMS> dhdy(y.rows());
     for (int i = 0; i < y.rows(); i++) {
+      dco::derivative(y_active(i)) = 1;
+      h_active = wrapped_fn(t, x, y_active, p);
       dhdy(i) = dco::derivative(y_active(i));
+      dco::derivative(y_active(i)) = 0;
     }
     return dhdy;
   }
 
-  template <typename T, typename X_ACTIVE_T, typename Y, int YDIMS, int PDIMS>
-  auto grad_x(T const t, X_ACTIVE_T const x, Eigen::Vector<Y, YDIMS> const &y,
+  template <typename T, typename X_ACTIVE_T, typename Y, int XDIMS, int YDIMS,
+            int PDIMS>
+  auto grad_x(T const t, Eigen::Vector<X_ACTIVE_T, XDIMS> const &x,
+              Eigen::Vector<Y, YDIMS> const &y,
               Eigen::Vector<T, PDIMS> const &p) const
-      -> decltype(wrapped_fn(t, x, y, p)) {
+      -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), XDIMS> {
     n_dx_evaluations += 1;
     using dco_mode_t = dco::gt1s<X_ACTIVE_T>;
     using active_t = typename dco_mode_t::type;
-    active_t x_active;
+    Eigen::Vector<active_t, XDIMS> x_active(x.rows());
+    for (int i = 0; i < x.rows(); i++) {
+      dco::value(x_active(i)) = x(i);
+    }
+    Eigen::Vector<X_ACTIVE_T, XDIMS> dhdx(x.rows());
     active_t h_active;
-    dco::value(x_active) = x;
-    dco::derivative(x_active) = 1;
-    h_active = wrapped_fn(t, x_active, y, p);
-    return dco::derivative(h_active);
+    for (int i = 0; i < x.rows(); i++) {
+      dco::derivative(x_active(i)) = 1;
+      h_active = wrapped_fn(t, x_active, y, p);
+      dhdx(i) = dco::derivative(h_active);
+      dco::derivative(x_active(i)) = 0;
+    }
+    return dhdx;
   }
 
-  template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS, int PDIMS>
-  auto hess_y(T const t, X const x, Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
+  template <typename T, typename X, typename Y_ACTIVE_T, int XDIMS, int YDIMS,
+            int PDIMS>
+  auto hess_y(T const t, Eigen::Vector<X, XDIMS> const &x,
+              Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
               Eigen::Vector<T, PDIMS> const &p) const
       -> Eigen::Matrix<decltype(wrapped_fn(t, x, y, p)), YDIMS, YDIMS> {
     n_d2y_evaluations += 1;
@@ -171,11 +186,11 @@ public:
     return d2hdy2;
   }
 
-  template <typename T, typename XY_ACTIVE_T, int YDIMS, int PDIMS>
-  auto d2dxdy(T const t, XY_ACTIVE_T const x,
+  template <typename T, typename XY_ACTIVE_T, int XDIMS, int YDIMS, int PDIMS>
+  auto d2dxdy(T const t, Eigen::Vector<XY_ACTIVE_T, XDIMS> const &x,
               Eigen::Vector<XY_ACTIVE_T, YDIMS> const &y,
               Eigen::Vector<T, PDIMS> const &p) const
-      -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), YDIMS> {
+      -> Eigen::Matrix<decltype(wrapped_fn(t, x, y, p)), XDIMS, YDIMS> {
     n_d2xy_evaluations += 1;
     using dco_tangent_t = typename dco::gt1s<XY_ACTIVE_T>::type;
     using dco_mode_t = dco::ga1s<dco_tangent_t>;
@@ -187,20 +202,29 @@ public:
       dco::passive_value(y_active(i)) = y(i);
       tape->register_variable(y_active(i));
     }
-    active_t x_active;
-    dco::passive_value(x_active) = x;
-    tape->register_variable(x_active);
-    dco::derivative(dco::value(x_active)) = 1;       // wiggle x
-    h_active = wrapped_fn(t, x_active, y_active, p); // compute h
-    dco::value(dco::derivative(h_active)) = 1;       // sensitivity to h is 1
-    tape->interpret_adjoint();
-    // If YDIMS is known at compile time, constructor is a no-op.
-    Eigen::Vector<XY_ACTIVE_T, YDIMS> ddxddy(y.rows());
-    // harvest derivative
-    for (int i = 0; i < ddxddy.rows(); i++) {
-      ddxddy(i) =
-          dco::derivative(dco::derivative(y_active(i))); // harvest d2dxdy
+    Eigen::Vector<active_t, XDIMS> x_active(x.rows());
+    for (int i = 0; i < x.rows(); x++) {
+      dco::passive_value(x_active(i)) = x(i);
+      tape->register_variable(x_active(i));
     }
+    Eigen::Matrix<XY_ACTIVE_T, XDIMS, YDIMS> ddxddy(x.rows(), y.rows());
+    for (int i = 0; i < x_active.rows(); i++) {
+      dco::derivative(dco::value(x_active(i))) = 1;    // wiggle x(i)
+      h_active = wrapped_fn(t, x_active, y_active, p); // compute h
+      dco::value(dco::derivative(h_active)) = 1;       // sensitivity to h is 1
+      tape->interpret_adjoint();
+      // harvest derivative
+      for (int j = 0; j < ddxddy.rows(); j++) {
+        ddxddy(i, j) =
+            dco::derivative(dco::derivative(y_active(j))); // harvest d2dxdy
+        // reset any accumulated values
+        dco::derivative(dco::derivative(y_active(j))) = 0;
+        dco::value(dco::derivative(y_active(j))) = 0;
+      }
+      dco::derivative(dco::derivative(x_active(i))) = 0;
+      dco::derivative(dco::value(x_active(i))) = 0;
+    }
+
     return ddxddy;
   }
 
@@ -244,7 +268,7 @@ template <typename F, typename G> class DAEOWrappedConstrained {
   // return a passive numerical value"
 public:
   template <typename T, typename XT, typename YT, int YDIMS, int PDIMS>
-    requires PreservesIntervals<F, T, XT, YT, YDIMS, PDIMS>
+    requires PreservesIntervals<F, T, XT, YT, 1, YDIMS, PDIMS>
   auto objective_value(T const t, XT const x, Eigen::Vector<YT, YDIMS> const &y,
                        Eigen::Vector<T, PDIMS> const &p) const
       -> decltype(m_objective(t, x, y, p)) {
@@ -253,8 +277,8 @@ public:
   }
 
   template <typename T, typename XT, typename YT, int YDIMS_EXT, int PDIMS>
-    requires PreservesIntervals<F, T, XT, YT, YDIMS_EXT, PDIMS> &&
-                 PreservesIntervals<G, T, XT, YT, YDIMS_EXT, PDIMS>
+    requires PreservesIntervals<F, T, XT, YT, 1, YDIMS_EXT, PDIMS> &&
+                 PreservesIntervals<G, T, XT, YT, 1, YDIMS_EXT, PDIMS>
   auto lagrangian_value(T const t, XT const x,
                         Eigen::Vector<YT, YDIMS_EXT> const &y_ext,
                         Eigen::Vector<T, PDIMS> const &p) const
@@ -416,8 +440,8 @@ public:
     auto start_position = tape->get_position();
 
     Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT> res(y.size(), y.size());
-    res = Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT>::Zero(y.size(), y.size());
-    
+    res = Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT>::Zero(y.size(),
+                                                                y.size());
   }
 };
 #endif

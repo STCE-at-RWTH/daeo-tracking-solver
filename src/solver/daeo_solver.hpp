@@ -24,7 +24,7 @@
 
 using std::vector;
 
-enum DAEOSolverFlags{
+enum DAEOSolverFlags {
   ONLY_USE_GLOBAL_OPTIMIZATION = 1,
   TRACK_LOCAL_OPTIMA = 2,
   DETECT_AND_CORRECT_EVENTS = 4,
@@ -45,9 +45,9 @@ template <typename NUMERIC_T> struct DAEOSolverSettings {
   bool LOGGING_ENABLED = true;
 };
 
-template <typename NUMERIC_T, int YDIMS> struct DAEOSolutionState {
+template <typename NUMERIC_T, int XDIMS, int YDIMS> struct DAEOSolutionState {
   NUMERIC_T t;
-  NUMERIC_T x;
+  Eigen::Vector<NUMERIC_T, XDIMS> x;
   size_t i_star;
   vector<Eigen::Vector<NUMERIC_T, YDIMS>> y;
 
@@ -74,8 +74,8 @@ template <typename NUMERIC_T, int YDIMS> struct DAEOSolutionState {
   }
 };
 
-template <typename XPRIME, typename OBJECTIVE, typename NUMERIC_T, int YDIMS,
-          int NPARAMS>
+template <typename XPRIME, typename OBJECTIVE, typename NUMERIC_T, int XDIMS,
+          int YDIMS, int NPARAMS>
 class DAEOTrackingSolver {
 public:
   /**
@@ -107,15 +107,7 @@ public:
   /**
    * @brief The type of the solution state
    */
-  using solution_state_t = DAEOSolutionState<NUMERIC_T, YDIMS>;
-
-  DAEOTrackingSolver(XPRIME const &t_xprime, OBJECTIVE const &t_objective,
-                     GlobalOptimizerSettings<NUMERIC_T> &t_opt_settings,
-                     DAEOSolverSettings<NUMERIC_T> &t_global_settings)
-      : m_xprime(t_xprime), m_objective(t_objective),
-        m_settings(t_global_settings),
-        m_optimizer(t_objective, t_opt_settings,
-                    typename optimizer_t::y_interval_t{interval_t{-10, 10}}) {}
+  using solution_state_t = DAEOSolutionState<NUMERIC_T, XDIMS, YDIMS>;
 
   template <typename DRIFT>
   vector<solution_state_t>

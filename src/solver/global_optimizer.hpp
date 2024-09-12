@@ -77,8 +77,8 @@ build_box(Eigen::Vector<T, DIMS> const &ll, Eigen::Vector<T, DIMS> const &ur) {
 
 // OPTIMIZER CLASSES
 
-template <int YDIMS = Eigen::Dynamic, int NPARAMS = Eigen::Dynamic,
-          typename NUMERIC_T = double,
+template <int XDIMS = Eigen::Dynamic, int YDIMS = Eigen::Dynamic,
+          int NPARAMS = Eigen::Dynamic, typename NUMERIC_T = double,
           typename INTERVAL_POLICIES = suggested_interval_policies<double>>
 class GlobalOptimizerBase {
 public:
@@ -87,6 +87,11 @@ public:
   // Result struct type, for convenience.
   using results_t = GlobalOptimizerResults<NUMERIC_T, interval_t, YDIMS>;
   // Type of the variable on which the function should be optimized
+
+  /**
+   *@brief Eigen::Vector type of system state x
+   */
+  using x_t = Eigen::Vector<NUMERIC_T, XDIMS>;
 
   /**
    * @brief Eigen::Vector type of the search arguments y
@@ -124,7 +129,7 @@ public:
    * @param[in] params
    * @returns Solver results struct.
    */
-  results_t find_minima_at(NUMERIC_T t, NUMERIC_T x, y_interval_t const &y0,
+  results_t find_minima_at(NUMERIC_T t, x_t const &x, y_interval_t const &y0,
                            params_t const &params) {
     std::queue<y_interval_t> workq;
     workq.push(y0);
@@ -170,15 +175,15 @@ public:
 
 protected:
   virtual vector<y_interval_t>
-  process_interval(size_t tasknum, NUMERIC_T t, NUMERIC_T x,
+  process_interval(size_t tasknum, NUMERIC_T t, x_t const &x,
                    y_interval_t const &y_i, params_t const &params,
                    results_t &results, BNBOptimizerLogger &logger) = 0;
 
   virtual void filter_global_optimum_from_results(results_t &results,
-                                                  NUMERIC_T t, NUMERIC_T x,
+                                                  NUMERIC_T t, x_t const &x,
                                                   params_t const &params) = 0;
 
-  virtual y_interval_t narrow_via_bisection(NUMERIC_T t, NUMERIC_T x,
+  virtual y_interval_t narrow_via_bisection(NUMERIC_T t, x_t const &x,
                                             y_interval_t const &y_in,
                                             params_t const &params,
                                             vector<bool> &dims_converged) = 0;
@@ -245,7 +250,7 @@ protected:
    * exactly on the optimizer point.
    * @returns @c vector of n-dimensional intervals post-split
    */
-  vector<y_interval_t> bisect_interval(NUMERIC_T t, NUMERIC_T x,
+  vector<y_interval_t> bisect_interval(NUMERIC_T t, x_t const &x,
                                        y_interval_t const &y, params_t const &p,
                                        vector<bool> const &dims_converged,
                                        y_interval_t const &grad_y) {
@@ -291,13 +296,16 @@ protected:
 /**
  * @class UnconstrainedGlobalOptimizer
  */
-template <typename FN, int YDIMS, int NPARAMS, typename NUMERIC_T = double,
+template <typename FN, int XDIMS, int YDIMS, int NPARAMS,
+          typename NUMERIC_T = double,
           typename INTERVAL_POLICIES = suggested_interval_policies<NUMERIC_T>>
 class UnconstrainedGlobalOptimizer
-    : public GlobalOptimizerBase<YDIMS, NPARAMS, NUMERIC_T, INTERVAL_POLICIES> {
+    : public GlobalOptimizerBase<XDIMS, YDIMS, NPARAMS, NUMERIC_T,
+                                 INTERVAL_POLICIES> {
 public:
   using base_t =
-      GlobalOptimizerBase<YDIMS, NPARAMS, NUMERIC_T, INTERVAL_POLICIES>;
+      GlobalOptimizerBase<XDIMS, YDIMS, NPARAMS, NUMERIC_T, INTERVAL_POLICIES>;
+  using x_t = typename base_t::x_t;
   using interval_t = typename base_t::interval_t;
   using results_t = typename base_t::results_t;
   using y_t = typename base_t::y_t;
@@ -314,7 +322,7 @@ protected:
   DAEOWrappedFunction<FN> m_objective;
 
   vector<y_interval_t> process_interval(size_t tasknum, NUMERIC_T t,
-                                        NUMERIC_T x, y_interval_t const &y_i,
+                                        x_t const &x, y_interval_t const &y_i,
                                         params_t const &params,
                                         results_t &results,
                                         BNBOptimizerLogger &logger) override {
@@ -395,7 +403,7 @@ protected:
   };
 
   void filter_global_optimum_from_results(results_t &results, NUMERIC_T t,
-                                          NUMERIC_T x,
+                                          x_t const &x,
                                           params_t const &params) override {
     vector<y_interval_t> res;
     NUMERIC_T h_max = std::numeric_limits<NUMERIC_T>::max();
@@ -413,7 +421,7 @@ protected:
     results.minima_intervals = std::move(res);
   };
 
-  y_interval_t narrow_via_bisection(NUMERIC_T t, NUMERIC_T x,
+  y_interval_t narrow_via_bisection(NUMERIC_T t, x_t const &x,
                                     y_interval_t const &y_i,
                                     params_t const &params,
                                     vector<bool> &dims_converged) override {
@@ -455,4 +463,5 @@ protected:
     return HESSIAN_MAYBE_INDEFINITE;
   }
 };
+
 #endif
