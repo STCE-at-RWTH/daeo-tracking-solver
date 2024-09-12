@@ -21,6 +21,10 @@ template <typename T, typename POLICIES>
 struct is_boost_interval<boost::numeric::interval<T, POLICIES>>
     : std::true_type {};
 
+template <typename T, int ROWS, int COLS>
+struct is_boost_interval<Eigen::Matrix<T, ROWS, COLS>> : is_boost_interval<T> {
+};
+
 template <typename T>
 concept IsInterval = is_boost_interval<T>::value;
 
@@ -35,7 +39,7 @@ concept PreservesIntervalsX =
 template <typename FN, typename T, typename X, typename Y, int XDIMS, int YDIMS,
           int PDIMS>
 concept PreservesIntervalsY =
-    (!IsInterval<Y>) || requires(FN f, T t, Eigen::Vector<X, XDIMS> x,
+    (!IsInterval<Y>) || requires(FN f, T t, Eigen::Vector<X, XDIMS> const &x,
                                  Eigen::Vector<Y, YDIMS> const &y,
                                  Eigen::Vector<T, PDIMS> const &p) {
       { f(t, x, y, p) } -> IsInterval;
@@ -52,7 +56,7 @@ concept PreservesIntervals =
  * optimizer and solver. Assumes that the return type of f is a scalar and
  * matches the type of scalar y.
  */
-template <typename FN> class DAEOWrappedFunction {
+template <typename FN, int ODIMS> class DAEOWrappedFunction {
 
   mutable size_t n_h_evaluations = 0;
   mutable size_t n_dy_evaluations = 0;
@@ -110,7 +114,7 @@ public:
     for (int i = 0; i < y.rows(); i++) {
       dco::derivative(y_active(i)) = 1;
       h_active = wrapped_fn(t, x, y_active, p);
-      dhdy(i) = dco::derivative(y_active(i));
+      dhdy(i) = dco::derivative(h_active);
       dco::derivative(y_active(i)) = 0;
     }
     return dhdy;
@@ -163,19 +167,16 @@ public:
 
     // active outputs
     active_t h_active;
-    // Hessian of a scalar function is a symmetric square matrix (provided
-    // second derivative symmetry holds)
+    // Hessian of a scalar function is a symmetric square matrix
+    // (provided second derivative symmetry holds)
     Eigen::Matrix<Y_ACTIVE_T, YDIMS, YDIMS> d2hdy2(y.rows(), y.rows());
-    // these loops go row-by-row, which is slow. easy performance gains are to
-    // be had.
     for (int hrow = 0; hrow < y.rows(); hrow++) {
       dco::derivative(dco::value(y_active(hrow))) = 1; // wiggle y[hrow]
       h_active = wrapped_fn(t, x, y_active, p);        // compute h
-      // set sensitivity to wobbles in h to 1
       dco::value(dco::derivative(h_active)) = 1;
       tape->interpret_adjoint_and_reset_to(start_position);
       for (int hcol = 0; hcol < y.rows(); hcol++) {
-        d2hdy2(hrow, hcol) = dco::derivative(dco::derivative(y_active[hcol]));
+        d2hdy2(hrow, hcol) = dco::derivative(dco::derivative(y_active(hcol)));
         // reset any accumulated values
         dco::derivative(dco::derivative(y_active(hcol))) = 0;
         dco::value(dco::derivative(y_active(hcol))) = 0;
