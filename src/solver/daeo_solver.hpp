@@ -19,11 +19,31 @@
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 
-#include "local_optima_solver.hpp"
-#include "settings.hpp"
-#include "utils/fmt_extensions.hpp"
+#include "global_optimizer.hpp"
+#include "utils/daeo_utils.hpp"
 
 using std::vector;
+
+enum DAEOSolverFlags{
+  ONLY_USE_GLOBAL_OPTIMIZATION = 1,
+  TRACK_LOCAL_OPTIMA = 2,
+  DETECT_AND_CORRECT_EVENTS = 4,
+  LINEARIZE_OPTIMIZER_DRIFT = 8,
+};
+
+template <typename NUMERIC_T> struct DAEOSolverSettings {
+  NUMERIC_T y0_min;
+  NUMERIC_T y0_max;
+
+  size_t SEARCH_FREQUENCY = 20;
+  size_t MAX_NEWTON_ITERATIONS = 120;
+  NUMERIC_T NEWTON_EPS = 1.0e-8;
+  NUMERIC_T EVENT_DETECTION_EPS = 5.0e-6; // this may be computeable from limits
+  NUMERIC_T EVENT_DRIFT_COEFF = 0.1;      // these might always be the same.
+
+  size_t solver_flags = TRACK_LOCAL_OPTIMA & DETECT_AND_CORRECT_EVENTS;
+  bool LOGGING_ENABLED = true;
+};
 
 template <typename NUMERIC_T, int YDIMS> struct DAEOSolutionState {
   NUMERIC_T t;
@@ -62,8 +82,7 @@ public:
    * @brief Type of the local optimizer.
    */
   using optimizer_t =
-      BNBOptimizer<OBJECTIVE, NUMERIC_T, suggested_interval_policies<NUMERIC_T>,
-                   YDIMS, NPARAMS>;
+      UnconstrainedGlobalOptimizer<OBJECTIVE, YDIMS, NPARAMS, NUMERIC_T>;
 
   /**
    * @brief Type for an optimizer of the objective function.
@@ -91,7 +110,7 @@ public:
   using solution_state_t = DAEOSolutionState<NUMERIC_T, YDIMS>;
 
   DAEOTrackingSolver(XPRIME const &t_xprime, OBJECTIVE const &t_objective,
-                     BNBOptimizerSettings<NUMERIC_T> &t_opt_settings,
+                     GlobalOptimizerSettings<NUMERIC_T> &t_opt_settings,
                      DAEOSolverSettings<NUMERIC_T> &t_global_settings)
       : m_xprime(t_xprime), m_objective(t_objective),
         m_settings(t_global_settings),
@@ -140,7 +159,8 @@ public:
       if (iterations_since_search == m_settings.SEARCH_FREQUENCY) {
         opt_res = m_optimizer.find_minima_at(next.t, next.x, params);
         if (opt_res.minima_intervals.size() == 0) {
-          fmt::println("*** SCREAMING CRYING VOMITING ON THE FLOOR iter={:d}***", iter);
+          fmt::println(
+              "*** SCREAMING CRYING VOMITING ON THE FLOOR iter={:d}***", iter);
           break;
         }
         solution_state_t from_opt = solution_state_from_optimizer_results(
@@ -166,11 +186,10 @@ public:
           fmt::println("  Reordering optima to match {:::.4e}", from_opt.y);
           if (m_settings.LINEARIZE_OPTIMIZER_DRIFT) {
             vector<NUMERIC_T> neighborhoods(from_opt.n_local_optima());
-            std::transform(
-                from_opt.y.begin(), from_opt.y.end(),
-                neighborhoods.begin(), [&](const auto &y) -> auto{
-                  return drift(from_opt.t, from_opt.x, y, params);
-                });
+            std::transform(from_opt.y.begin(), from_opt.y.end(),
+                           neighborhoods.begin(), [&](const auto &y) -> auto {
+                             return drift(from_opt.t, from_opt.x, y, params);
+                           });
             next = correct_optimizer_permutation(from_opt, next, neighborhoods);
           } else {
             next = correct_optimizer_permutation(
@@ -182,11 +201,10 @@ public:
           fmt::println("  Reordered optima to match {:::.4e}", next.y);
           if (m_settings.LINEARIZE_OPTIMIZER_DRIFT) {
             vector<NUMERIC_T> neighborhoods(from_opt.n_local_optima());
-            std::transform(
-                from_opt.y.begin(), from_opt.y.end(),
-                neighborhoods.begin(), [&](const auto &y) -> auto{
-                  return drift(from_opt.t, from_opt.x, y, params);
-                });
+            std::transform(from_opt.y.begin(), from_opt.y.end(),
+                           neighborhoods.begin(), [&](const auto &y) -> auto {
+                             return drift(from_opt.t, from_opt.x, y, params);
+                           });
             from_opt =
                 correct_optimizer_permutation(next, from_opt, neighborhoods);
           } else {
@@ -210,9 +228,10 @@ public:
         next.i_star = min_idx;
         event_found = next.i_star != current.i_star;
         if (event_found &&
-            (m_objective.objective_value(next.t, next.x, next.y_star(), params) >=
+            (m_objective.objective_value(next.t, next.x, next.y_star(),
+                                         params) >=
              m_objective.objective_value(next.t, next.x, next.y[current.i_star],
-                               params))) {
+                                         params))) {
           fmt::println("  wtf");
         }
       }
@@ -228,7 +247,8 @@ public:
             "  Detected global optimzer switch between (t={:.6e}, "
             "y={::.4e}, h={:.4e}) and (t={:.6e}, y={::.4e}, h={:.4e})",
             current.t, current.y_star(),
-            m_objective.objective_value(current.t, current.x, current.y_star(), params),
+            m_objective.objective_value(current.t, current.x, current.y_star(),
+                                        params),
             next.t, next.y_star(),
             m_objective.objective_value(next.t, next.x, next.y_star(), params));
         fmt::println("    Jump size is {:.6e}",
@@ -301,8 +321,7 @@ public:
 
 private:
   DAEOWrappedFunction<XPRIME> m_xprime;
-  DAEOWrappedFunction<OBJECTIVE>
-      m_objective;
+  DAEOWrappedFunction<OBJECTIVE> m_objective;
   DAEOSolverSettings<NUMERIC_T> const m_settings;
   optimizer_t m_optimizer;
 
@@ -487,10 +506,11 @@ private:
     // fix i_star (assume no event in this part of the program)
     size_t i_star = start.i_star;
     Eigen::VectorX<NUMERIC_T> result(1 + start.n_local_optima() * ydims);
-    result(0) = start.x - guess.x +
-                dt / 2 *
-                    (m_xprime.objective_value(start.t, start.x, start.y[i_star], p) +
-                     m_xprime.objective_value(guess.t, guess.x, guess.y[i_star], p));
+    result(0) =
+        start.x - guess.x +
+        dt / 2 *
+            (m_xprime.objective_value(start.t, start.x, start.y[i_star], p) +
+             m_xprime.objective_value(guess.t, guess.x, guess.y[i_star], p));
     for (size_t i = 0; i < start.n_local_optima(); i++) {
       result(Eigen::seqN(1 + i * ydims, ydims)) =
           m_objective.grad_y(guess.t, guess.x, guess.y[i], p);
@@ -584,7 +604,8 @@ private:
    */
   inline NUMERIC_T event_function(NUMERIC_T t, NUMERIC_T x, y_t const &y1,
                                   y_t const &y2, params_t const &p) {
-    return m_objective.objective_value(t, x, y1, p) - m_objective.objective_value(t, x, y2, p);
+    return m_objective.objective_value(t, x, y1, p) -
+           m_objective.objective_value(t, x, y2, p);
   }
 
   /**

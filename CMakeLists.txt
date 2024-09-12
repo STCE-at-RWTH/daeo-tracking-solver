@@ -52,7 +52,7 @@ add_compile_definitions(
 include_directories(interval/include)
 
 set(objective_headers src/solver/objective.hpp)
-set(bnb_solver_headers src/solver/settings.hpp src/solver/local_optima_solver.hpp)
+set(bnb_solver_headers src/solver/global_optimizer.hpp src/solver/logging.hpp)
 set(daeo_solver_headers src/solver/daeo_solver.hpp)
 
 get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)

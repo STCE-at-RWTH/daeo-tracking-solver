@@ -78,4 +78,13 @@ bool zero_in_or_absolutely_near(boost::numeric::interval<T, POLICIES> y,
          (fabs(y.lower()) < tol && fabs(y.upper()) < tol);
 }
 
+/**
+ * @brief Suggested Boost interval policies.
+ */
+template <typename T>
+using suggested_interval_policies = boost::numeric::interval_lib::policies<
+    boost::numeric::interval_lib::save_state<
+        boost::numeric::interval_lib::rounded_transc_std<T>>,
+    boost::numeric::interval_lib::checking_base<T>>;
+
 #endif

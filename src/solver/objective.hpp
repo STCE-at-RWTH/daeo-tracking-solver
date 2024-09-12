@@ -1,14 +1,12 @@
 /**
- * @file daeo_solver.hpp
+ * @file objective.hpp
  * @author Sasha [fleming@stce.rwth-aachen.de]
  * @brief Wrapper classes for functions of the form f(t, x, y, p).
  */
 #ifndef _FUNCTION_WRAPPER_HPP
 #define _FUNCTION_WRAPPER_HPP
 
-#include <concepts>
 #include <type_traits>
-#include <vector>
 
 // It's recommended to include eigen/boost before DCO
 #include "Eigen/Dense"
@@ -338,13 +336,21 @@ public:
     return d2Ldy2;
   }
 
+  template <typename T, typename X, typename Y, int YDIMS_EXT, int PDIMS>
+  auto norm_dLdy(T t, X x, Eigen::Vector<Y, YDIMS_EXT> const &y,
+                 Eigen::Vector<T, PDIMS> const &p) const
+      -> decltype(m_objective(t, x, y, p)) {
+    using eltype = decltype(m_objective(t, x, y, p));
+    Eigen::Vector<eltype, YDIMS_EXT> dLdY = grad_y_lagrangian(t, x, y, p);
+    return dLdY.norm();
+  }
+
   // someone needs to fix the return types in this file (not me)
   template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS_EXT,
             int PDIMS>
-  auto
-  grad_y_norm_grad_y_lagrangian(T const t, X const x,
-                                Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
-                                Eigen::Vector<T, PDIMS> const &p) const
+  auto grad_y_norm_dLdy(T const t, X const x,
+                        Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
+                        Eigen::Vector<T, PDIMS> const &p) const
       -> Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> {
 
     // is possible to write a reasonable driver for this, tbh
@@ -380,26 +386,38 @@ public:
       // no longer wiggling y[hrow]
       dco::derivative(dco::value(y_active(hrow))) = 0;
     }
-    
-    // Hessian is symmetric... I doubt this transpose has significant cost, though.
+
+    // Hessian is symmetric... I doubt this transpose has significant cost,
+    // though.
     Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> res(y.rows());
     res = 2 * d2Ldy2.transpose() * dLdy;
     return res;
   }
 
-  template <typename T, typename X, typename Y, int YDIMS_EXT, int PDIMS>
-  auto norm_dLdy(T t, X x, Eigen::Vector<Y, YDIMS_EXT> const &y,
-                 Eigen::Vector<T, PDIMS> const &p) const
-      -> decltype(m_objective(t, x, y, p)) {
-    using eltype = decltype(m_objective(t, x, y, p));
-    Eigen::Vector<eltype, YDIMS_EXT> dLdY = grad_y_lagrangian(t, x, y, p);
-    return dLdY.norm();
-  }
+  template <typename T, typename X, typename Y_ACTIVE_T, int YDIMS_EXT,
+            int PDIMS>
+  auto hess_y_norm_dLdy(T t, X x, Eigen::Vector<Y_ACTIVE_T, YDIMS_EXT> const &y,
+                        Eigen::Vector<T, PDIMS> const &p) const
+      -> Eigen::Matrix<decltype(m_objective(t, x, y, p)), YDIMS_EXT,
+                       YDIMS_EXT> {
+    using dco_base_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
+    using dco_tangent_t = typename dco::gt1s<dco_base_tangent_t>::type;
+    using dco_mode_t = dco::ga1s<dco_tangent_t>;
+    using active_t = typename dco_mode_t::type;
+    dco::smart_tape_ptr_t<dco_mode_t> tape;
+    tape->reset();
 
-  template <typename T, typename X, typename Y, int YDIMS, int PDIMS>
-  auto operator()(T t, X x, Eigen::Vector<Y, YDIMS> const &y,
-                  Eigen::Vector<T, PDIMS> const &p) const {
-    return norm_dLdy(t, x, y, p);
+    active_t L_active;
+    Eigen::Vector<active_t, YDIMS_EXT> y_active(y.rows());
+    for (int i = 0; i < y.rows(); i++) {
+      dco::passive_value(y_active(i)) = y(i);
+      tape->register_variable(y_active(i));
+    }
+    auto start_position = tape->get_position();
+
+    Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT> res(y.size(), y.size());
+    res = Eigen::Matrix<Y_ACTIVE_T, YDIMS_EXT, YDIMS_EXT>::Zero(y.size(), y.size());
+    
   }
 };
 #endif

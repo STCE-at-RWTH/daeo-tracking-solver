@@ -24,7 +24,7 @@ constexpr int NUM_PARAMS = 4;
 
 template <typename T>
 void run_simple_example(DAEOSolverSettings<T> solver_s,
-                        BNBOptimizerSettings<T> optimizer_s) {
+                        GlobalOptimizerSettings<T> optimizer_s) {
   auto f = [](const auto t, const auto x, const auto &y, const auto &p) -> auto{
     return -(p(0) + y(0)) * x;
   };
@@ -75,7 +75,7 @@ void run_simple_example(DAEOSolverSettings<T> solver_s,
 
 void griewank_example_event_tolerance_study() {
 
-  BNBOptimizerSettings<double> opt_s;
+  GlobalOptimizerSettings<double> opt_s;
   opt_s.TOL_Y = 1.0e-10;
   opt_s.LOGGING_ENABLED = false;
 
@@ -146,7 +146,7 @@ void simple_example_perf_study(int N) {
   solver_s.y0_min = -6.0;
   solver_s.y0_max = 6.0;
 
-  BNBOptimizerSettings<double> opt_s;
+  GlobalOptimizerSettings<double> opt_s;
   opt_s.LOGGING_ENABLED = false;
 
   /**

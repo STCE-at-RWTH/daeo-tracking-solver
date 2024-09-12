@@ -10,19 +10,33 @@
 
 #include "Eigen/Dense" // must include Eigen BEFORE dco/c++
 #include "boost/numeric/interval.hpp"
-#include "dco.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 
 #include "logging.hpp"
 #include "objective.hpp"
-#include "settings.hpp"
 #include "utils/daeo_utils.hpp"
 #include "utils/sylvesters_criterion.hpp"
 
 using std::vector;
 
 // DATA TYPES
+
+enum GlobalOptimizerMode {
+  FIND_ALL_LOCAL_MINIMIZERS,
+  FIND_ONLY_GLOBAL_MINIMIZER
+};
+
+template <typename NUMERIC_T> struct GlobalOptimizerSettings {
+  GlobalOptimizerMode MODE = FIND_ALL_LOCAL_MINIMIZERS;
+  std::size_t MAXITER = 100'000;
+  std::size_t MAX_REFINE_ITER = 1'000;
+
+  NUMERIC_T TOL_Y = 1.0e-8;
+
+  bool LOGGING_ENABLED = true;
+  bool RETEST_CRITICAL_POINTS = false;
+};
 
 template <typename NUMERIC_T, typename INTERVAL_T, int YDIMS>
 struct GlobalOptimizerResults {
@@ -55,7 +69,7 @@ template <typename T, int DIMS, typename P = suggested_interval_policies<T>>
 Eigen::Vector<boost::numeric::interval<T, P>, DIMS>
 build_box(Eigen::Vector<T, DIMS> const &ll, Eigen::Vector<T, DIMS> const &ur) {
   Eigen::Vector<boost::numeric::interval<T, P>, DIMS> res(ll.rows());
-  for (size_t i = 0; i++; i < ll.rows()) {
+  for (size_t i = 0; i < ll.rows(); i++) {
     res(i).set(ll(i), ur(i));
   }
   return res;
@@ -100,7 +114,7 @@ public:
    */
   using y_hessian_interval_t = Eigen::Matrix<interval_t, YDIMS, YDIMS>;
 
-  BNBOptimizerSettings<NUMERIC_T> const settings;
+  GlobalOptimizerSettings<NUMERIC_T> const settings;
 
   /**
    * @brief Find minima in @c y of @c h(t,x,y;p) using the set search domain.
@@ -141,7 +155,7 @@ public:
     // one last check for the global.
     // am I saving any work with this? TBD.
     if (settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER) {
-      filter_global_from_results(sresults, t, x, params);
+      filter_global_optimum_from_results(sresults, t, x, params);
     }
 
     auto comp_end = std::chrono::high_resolution_clock::now();
@@ -150,6 +164,9 @@ public:
     }
     return sresults;
   };
+
+  GlobalOptimizerBase(GlobalOptimizerSettings<NUMERIC_T> t_settings)
+      : settings(t_settings){};
 
 protected:
   virtual vector<y_interval_t>
@@ -274,8 +291,7 @@ protected:
 /**
  * @class UnconstrainedGlobalOptimizer
  */
-template <typename FN, int YDIMS = Eigen::Dynamic, int NPARAMS = Eigen::Dynamic,
-          typename NUMERIC_T = double,
+template <typename FN, int YDIMS, int NPARAMS, typename NUMERIC_T = double,
           typename INTERVAL_POLICIES = suggested_interval_policies<NUMERIC_T>>
 class UnconstrainedGlobalOptimizer
     : public GlobalOptimizerBase<YDIMS, NPARAMS, NUMERIC_T, INTERVAL_POLICIES> {
@@ -291,7 +307,7 @@ public:
   using y_hessian_interval_t = typename base_t::y_hessian_interval_t;
 
   UnconstrainedGlobalOptimizer(FN t_objective,
-                               BNBOptimizerSettings<NUMERIC_T> t_settings)
+                               GlobalOptimizerSettings<NUMERIC_T> t_settings)
       : base_t(t_settings), m_objective(t_objective){};
 
 protected:
@@ -309,7 +325,7 @@ protected:
     std::vector<bool> dims_converged = this->measure_convergence(y_i);
     size_t result_code = this->convergence_test(dims_converged);
     // value test
-    interval_t h(this->m_objective.value(t, x, y_i, params));
+    interval_t h(m_objective.objective_value(t, x, y_i, params));
     // fails if the lower end of the interval is larger than global upper bound
     // we update the global upper bound if the upper end of the interval is less
     // than the global optimum bound we only mark failures here, and we could
@@ -348,10 +364,10 @@ protected:
     } else if (result_code & HESSIAN_TEST_LOCAL_MIN) {
       // gradient test pass, hessian test indicates local min
       y_interval_t y_res =
-          narrow_interval_via_bisection(t, x, y_i, params, dims_converged);
+          narrow_via_bisection(t, x, y_i, params, dims_converged);
       result_code |= CONVERGENCE_TEST_PASS;
       if (this->settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER) {
-        interval_t h_res = this->m_objective.value(t, x, y_i, params);
+        interval_t h_res = m_objective.objective_value(t, x, y_i, params);
         if (h_res.lower() >= results.optima_upper_bound) {
           result_code |= VALUE_TEST_FAIL;
         } else {
@@ -397,10 +413,10 @@ protected:
     results.minima_intervals = std::move(res);
   };
 
-  y_interval_t
-  narrow_interval_via_bisection(NUMERIC_T t, NUMERIC_T x,
-                                y_interval_t const &y_i, params_t const &params,
-                                vector<bool> &dims_converged) override {
+  y_interval_t narrow_via_bisection(NUMERIC_T t, NUMERIC_T x,
+                                    y_interval_t const &y_i,
+                                    params_t const &params,
+                                    vector<bool> &dims_converged) override {
     using boost::numeric::median;
     y_interval_t y(y_i);
     y_t y_m(y.rows());
@@ -456,7 +472,108 @@ public:
   using y_hessian_t = typename base_t::y_hessian_t;
   using y_hessian_interval_t = typename base_t::y_hessian_interval_t;
 
+  EqualityConstrainedGlobalOptimizer(
+      OBJECTIVE t_objective, CONSTRAINT t_constraint,
+      GlobalOptimizerSettings<NUMERIC_T> t_settings)
+      : base_t(t_settings), m_lagrangian(t_objective, t_constraint) {}
+
 protected:
   DAEOWrappedConstrained<OBJECTIVE, CONSTRAINT> m_lagrangian;
+
+  vector<y_interval_t> process_interval(size_t tasknum, NUMERIC_T t,
+                                        NUMERIC_T x, y_interval_t const &y_i,
+                                        params_t const &params,
+                                        results_t &results,
+                                        BNBOptimizerLogger &logger) override {
+                                          using clock = std::chrono::high_resolution_clock;
+    if (this->settings.LOGGING_ENABLED) {
+      logger.log_task_begin(clock::now(), tasknum, y_i);
+    }
+    std::vector<bool> dims_converged = this->measure_convergence(y_i);
+    size_t result_code = this->convergence_test(dims_converged);
+    // value test on the gradient of the lagrangian
+    // we are searching for critical points!
+    interval_t h(m_lagrangian.norm_dLdy(t, x, y_i, params));
+    // fails if the lower end of the interval is larger than global upper bound
+    // we update the global upper bound if the upper end of the interval is less
+    // than the global optimum bound we only mark failures here, and we could
+    // bail at this point, if we wished.
+    // TODO bail early and avoid derivative tests
+    if (results.optima_upper_bound < h.lower()) {
+      result_code |= VALUE_TEST_FAIL;
+    } else if (h.upper() < results.optima_upper_bound) {
+      results.optima_upper_bound = h.upper();
+    }
+
+    // first derivative test
+    // fails if it is not possible for the gradient to be zero inside the
+    // interval y
+    y_interval_t dhdy(m_lagrangian.grad_y_norm_dLdy(t, x, y_i, params));
+    result_code |= this->gradient_test(dhdy);
+    // return early if gradient test fails, saves determinant computations
+    if (result_code & GRADIENT_TEST_FAIL) {
+      if (this->settings.LOGGING_ENABLED) {
+        logger.log_task_complete(clock::now(), tasknum, y_i, result_code);
+      }
+      return {};
+    }
+
+    y_hessian_interval_t d2hdy2(m_objective.hess_y(t, x, y_i, params));
+    result_code |= hessian_test(d2hdy2);
+
+    vector<y_interval_t> candidate_intervals;
+    if (this->settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER &&
+        (result_code & VALUE_TEST_FAIL)) {
+      // only searching for global, value test failed
+      // do nothing
+    } else if (result_code & (GRADIENT_TEST_FAIL | HESSIAN_TEST_LOCAL_MAX)) {
+      // gradient test failed OR hessian test failed
+      // do nothing
+    } else if (result_code & HESSIAN_TEST_LOCAL_MIN) {
+      // gradient test pass, hessian test indicates local min
+      y_interval_t y_res =
+          narrow_via_bisection(t, x, y_i, params, dims_converged);
+      result_code |= CONVERGENCE_TEST_PASS;
+      if (this->settings.MODE == FIND_ONLY_GLOBAL_MINIMIZER) {
+        interval_t h_res = this->m_objective.objective_value(t, x, y_i, params);
+        if (h_res.lower() >= results.optima_upper_bound) {
+          result_code |= VALUE_TEST_FAIL;
+        } else {
+          results.minima_intervals.push_back(y_res);
+        }
+      } else {
+        results.minima_intervals.push_back(y_res);
+      }
+    } else if (result_code & CONVERGENCE_TEST_PASS) {
+      // hessian test inconclusive, BUT the interval is too small to split
+      // further save in a special list to deal with later
+      results.hessian_test_inconclusive.push_back(y_i);
+    } else {
+      // gradient test pass, hessian test inconclusive, interval can still be
+      // split!
+      candidate_intervals =
+          this->bisect_interval(t, x, y_i, params, dims_converged, dhdy);
+    }
+
+    if (this->settings.LOGGING_ENABLED) {
+      logger.log_task_complete(clock::now(), tasknum, y_i, result_code);
+    }
+
+    return candidate_intervals;
+
+  };
+
+  void filter_global_optimum_from_results(results_t &results, NUMERIC_T t,
+                                          NUMERIC_T x,
+                                          params_t const &params) override {};
+
+  y_interval_t narrow_via_bisection(NUMERIC_T t, NUMERIC_T x,
+                                    y_interval_t const &y_in,
+                                    params_t const &params,
+                                    vector<bool> &dims_converged) override {};
+
+  OptimizerTestCode bordered_hessian_test(y_hessian_interval_t const & y){
+    return HESSIAN_MAYBE_INDEFINITE;
+  }
 };
 #endif
