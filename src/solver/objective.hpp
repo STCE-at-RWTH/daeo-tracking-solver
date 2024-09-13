@@ -56,7 +56,7 @@ concept PreservesIntervals =
  * optimizer and solver. Assumes that the return type of f is a scalar and
  * matches the type of scalar y.
  */
-template <typename FN, int ODIMS> class DAEOWrappedFunction {
+template <typename FN> class DAEOWrappedFunction {
 
   mutable size_t n_h_evaluations = 0;
   mutable size_t n_dy_evaluations = 0;

@@ -38,6 +38,13 @@ int main(int argc, char **argv) {
   auto res = gopt.find_minima_at(0.0, x0, search_domain, p);
 
   for (auto& y_i : res.minima_intervals){
-    fmt::println("{::.4e}", y_i);
+    fmt::println("{::.8e}", y_i);
+  }
+
+  gopt_t::x_t x1(3.0, 1.0);
+  res = gopt.find_minima_at(0.0, x1, search_domain, p);
+
+  for (auto& y_i : res.minima_intervals){
+    fmt::println("{::.8e}", y_i);
   }
 }
