@@ -64,6 +64,11 @@ template <typename NUMERIC_T, int XDIMS, int YDIMS> struct DAEOSolutionState {
    */
   inline int ydims() const { return y[0].rows(); }
 
+  /**
+   * @brief Return the number of dimensions of the dynamic state @c x
+   */
+  inline int xdims() const { return x.rows(); }
+
   // what the heck am I doing
   /**
    * @brief Get a (const) reference to the global optimum y*
@@ -82,22 +87,27 @@ public:
    * @brief Type of the local optimizer.
    */
   using optimizer_t =
-      UnconstrainedGlobalOptimizer<OBJECTIVE, YDIMS, NPARAMS, NUMERIC_T>;
+      UnconstrainedGlobalOptimizer<OBJECTIVE, XDIMS, YDIMS, NPARAMS, NUMERIC_T>;
 
   /**
    * @brief Type for an optimizer of the objective function.
    */
-  using y_t = Eigen::Vector<NUMERIC_T, YDIMS>;
+  using y_t = typename optimizer_t::y_t;
+
+  /**
+   * @brief type of x.
+   */
+  using x_t = typename optimizer_t::x_t;
 
   /**
    * @brief Type for the hessian matrix of the objective function.
    */
-  using y_hessian_t = Eigen::Matrix<NUMERIC_T, YDIMS, YDIMS>;
+  using y_hessian_t = typename optimizer_t::y_hessian_t;
 
   /**
    * @brief Type of the parameter vector
    */
-  using params_t = Eigen::Vector<NUMERIC_T, NPARAMS>;
+  using params_t = typename optimizer_t::params_t;
 
   /**
    * @brief An interval of @c NUMERIC_TYPE
@@ -109,10 +119,10 @@ public:
    */
   using solution_state_t = DAEOSolutionState<NUMERIC_T, XDIMS, YDIMS>;
 
-  template <typename DRIFT>
-  vector<solution_state_t>
-  solve_daeo(NUMERIC_T t, NUMERIC_T t_end, NUMERIC_T dt, NUMERIC_T x0,
-             params_t const &params, DRIFT drift, std::string tag = "") {
+  vector<solution_state_t> solve_daeo(NUMERIC_T t, NUMERIC_T t_end,
+                                      NUMERIC_T dt, x_t const &x0,
+                                      params_t const &params,
+                                      std::string tag = "") {
     using clock = std::chrono::high_resolution_clock;
     vector<solution_state_t> solution_trajectory;
     DAEOSolverLogger logger(tag);
@@ -322,7 +332,7 @@ private:
    * optimizer at (t, x).
    */
   solution_state_t solution_state_from_optimizer_results(
-      NUMERIC_T const t, NUMERIC_T const x,
+      NUMERIC_T const t, x_t const &x,
       typename optimizer_t::results_t gopt_results, params_t p) {
     using boost::numeric::median;
     vector<y_t> y;
@@ -497,13 +507,14 @@ private:
     int ydims = start.ydims();
     // fix i_star (assume no event in this part of the program)
     size_t i_star = start.i_star;
-    Eigen::VectorX<NUMERIC_T> result(1 + start.n_local_optima() * ydims);
-    result(0) =
+    int gdims = start.xdims() + start.n_local_optima() * ydims;
+    Eigen::VectorX<NUMERIC_T> result(gdims);
+    result(Eigen::seq(0, start.xdims())) =
         start.x - guess.x +
         dt / 2 *
             (m_xprime.objective_value(start.t, start.x, start.y[i_star], p) +
              m_xprime.objective_value(guess.t, guess.x, guess.y[i_star], p));
-    for (size_t i = 0; i < start.n_local_optima(); i++) {
+    for (int i = 0; i < start.n_local_optima(); i++) {
       result(Eigen::seqN(1 + i * ydims, ydims)) =
           m_objective.grad_y(guess.t, guess.x, guess.y[i], p);
     }
@@ -522,7 +533,8 @@ private:
                             params_t const &p) {
     using Eigen::seqN;
     int ydims = guess.ydims();
-    int ndims = 1 + guess.n_local_optima() * ydims;
+    int xdims = guess.xdims();
+    int ndims = xdims + guess.n_local_optima() * ydims;
     Eigen::MatrixX<NUMERIC_T> result(ndims, ndims);
     result(0, 0) =
         -1 +

@@ -39,8 +39,6 @@ enum OptimizerEventCode {
 
 inline auto format_as(OptimizerEventCode evc) { return fmt::underlying(evc); }
 
-
-
 constexpr char OPTIMIZER_LOG_COLUMNS[]{
     "TASKNUM\tTSTAMP\tEVENTID\tEXTRACODE\tX\tH\tDHDX\tD2HDX2\tCONVERGENCE"};
 constexpr char LOG_TNUM_TSTAMP[]{"{:d}\t{}\t"};
