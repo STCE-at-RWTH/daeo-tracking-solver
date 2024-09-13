@@ -1,0 +1,128 @@
+% Template for talks using the Logo of STCE and Corporate Design of RWTH Aachen
+% adapted from:
+% https://www.mi.fu-berlin.de/w/Mi/BeamerTemplateCorporateDesign
+
+\usepackage{amsmath,dsfont,listings}
+
+%%% STCE logo
+% small version for upper right corner of normal pages
+\pgfdeclareimage[height=0.9cm]{university-logo}{logo.png}
+\logo{\pgfuseimage{university-logo}}
+% large version for upper right corner of title page
+\pgfdeclareimage[height=1cm]{big-university-logo}{logo.png}
+\newcommand{\titleimage}[1]{\pgfdeclareimage[height=2cm]{title-image}{#1}}
+\titlegraphic{\pgfuseimage{title-image}}
+%%% end STCE logo
+
+% NOTE: 1cm = 0.393 in = 28.346 pt;    1 pt = 1/72 in = 0.0352 cm
+\setbeamersize{text margin right=3.5mm, text margin left=7.5mm}  % text margin
+
+% colors to be used
+\definecolor{text-grey}{RGB}{51, 51, 51} % grey text on white background
+\definecolor{bg-grey}{rgb}{0.66, 0.65, 0.60} % grey background (for white text)
+\definecolor{rwth-blue}{RGB}{0, 83, 159} % blue text
+\definecolor{rwth-green}{RGB}{153, 204, 0} % green text
+\definecolor{rwth-red}{RGB}{204, 0, 0} % red text (used by \alert)
+
+\definecolor{rwth-blue-2}{RGB}{64,127,183}
+\definecolor{rwth-blue-3}{RGB}{142,186,229}
+\definecolor{rwth-blue-4}{RGB}{199,221,242}
+\definecolor{rwth-blue-5}{RGB}{232,241,250}
+
+% switch off the sidebars
+% TODO: loading \useoutertheme{sidebar} (which is maybe wanted) also inserts
+%   a sidebar on title page (unwanted), also indents the page title (unwanted?),
+%   and duplicates the navigation symbols (unwanted)
+\setbeamersize{sidebar width left=0cm, sidebar width right=0mm}
+\setbeamertemplate{sidebar right}{}
+\setbeamertemplate{sidebar left}{}
+%    XOR
+% \useoutertheme{sidebar}
+
+% frame title
+% is truncated before logo and splits on two lines
+% if neccessary (or manually using \\)
+\setbeamertemplate{frametitle}{%
+    \vskip-35pt 
+\color{black}\normalsize%
+    \begin{minipage}[b][23pt]{\linewidth}%
+    \flushleft\insertframetitle%
+    \end{minipage} \\
+\vskip-4pt
+\color{rwth-blue}\rule{\textwidth}{0.4pt}
+}
+
+%%% title page
+% TODO: get rid of the navigation symbols on the title page.
+%   actually, \frame[plain] *should* remove them...
+\setbeamertemplate{title page}{
+% upper right: STCE logo
+\vskip2pt\hfill \pgfuseimage{big-university-logo} \\
+\vfill
+\vskip6pt\hskip3pt
+% title image of the presentation
+% set the title and the author
+\begin{center}
+\vskip4pt
+\large \inserttitle \vskip5pt  \small \insertsubtitle
+\vskip8pt
+	\normalsize \insertauthor  
+\vskip8pt
+%	\includegraphics[width=2cm]{utils/foto_naumann}	
+%\\ [-3mm]
+	\footnotesize \insertinstitute 
+\end{center}
+\vfill
+}
+%%% end title page
+
+%%% colors
+\usecolortheme{lily}
+\setbeamercolor*{normal text}{fg=black,bg=white}
+\setbeamercolor*{alerted text}{fg=rwth-red}
+\setbeamercolor*{example text}{fg=rwth-green}
+\setbeamercolor*{structure}{fg=black}
+
+\setbeamercolor*{block title}{fg=white,bg=black!50}
+\setbeamercolor*{block title alerted}{fg=white,bg=black!50}
+\setbeamercolor*{block title example}{fg=white,bg=black!50}
+
+\setbeamercolor*{block body}{bg=black!10}
+\setbeamercolor*{block body alerted}{bg=black!10}
+\setbeamercolor*{block body example}{bg=black!10}
+
+\setbeamercolor{bibliography entry author}{fg=black}
+% TODO: this doesn't work at all:
+\setbeamercolor{bibliography entry journal}{fg=text-grey}
+
+\setbeamercolor{item}{fg=black}
+\setbeamercolor{navigation symbols}{fg=text-grey,bg=bg-grey}
+%%% end colors
+
+%%% headline
+\setbeamertemplate{headline}{
+\vskip10pt \hfill\insertlogo\hspace{3.5mm} % logo on the right
+%\vskip0pt\color{rwth-blue}\rule{\textwidth}{0.4pt} % horizontal line
+}
+%%%% end headline
+
+%%% footline
+\newcommand{\footlinetext}{\insertshortinstitute, \insertshorttitle}
+\setbeamertemplate{footline}{
+\vskip5pt\color{rwth-blue}\rule{\textwidth}{0.4pt}\\ % horizontal line
+\vskip2pt
+\makebox[123mm]{\hspace{7.5mm}
+\color{black}\footlinetext
+%\hfill \raisebox{-1pt}{\usebeamertemplate***{navigation symbols}}
+\hfill \insertframenumber}
+\vskip4pt
+}
+%%% end footline
+
+%%% settings for listings package
+\lstset{extendedchars=true, showstringspaces=false, basicstyle=\footnotesize\sffamily, tabsize=2, breaklines=true, breakindent=10pt, frame=l, columns=fullflexible}
+\lstset{language=C++} % this sets the syntax highlighting
+\lstset{mathescape=true} % this switches on $...$ substitution in code
+% enables UTF-8 in source code:
+\lstset{literate={ä}{{\"a}}1 {ö}{{\"o}}1 {ü}{{\"u}}1 {Ä}{{\"A}}1 {Ö}{{\"O}}1 {Ü}{{\"U}}1 {ß}{\ss}1}
+%%% end listings
