@@ -23,20 +23,20 @@ begin
 end
 
 # ╔═╡ 21ab701d-8741-4583-bf37-7d894a87f934
-h(x, y) = ((y-x[1])/3)^2 + 3*cospi(y/4)
+h(x, y) = (x-y)^2 + sin(5 * y)
 
 # ╔═╡ 8857fc9d-1bc0-44cf-bbca-48da0132d394
-@bind temp_x Slider(-6.01:0.01:6, show_value=true, default=0)
+@bind temp_x Slider(-6.02:0.02:6, show_value=true, default=0)
 
 # ╔═╡ feab4a47-b0a8-45e4-ba37-122dc1f4ba9b
 fig1 = begin
-	fn = Base.Fix1(h, temp_x)
-	p1 = plot(-6:0.01:6, fn, dpi=800, label=L"\left.h(x, y)\right|_{x=0}", lw=4, xlabel=L"y", ylabel=L"h", legend=:topright, legendfontsize=16, size=(1200, 800), tickfontsize=14, labelfontsize=20)
-	min_ys = [-3.56357456, 3.56357456]
+	fn = Base.Fix1(h, 1.0)
+	p1 = plot(0.5:0.01:2.51, fn, dpi=800, label=L"\left.h(x, y)\right|_{x=1}", lw=4, xlabel=L"y", ylabel=L"h", legend=:topright, legendfontsize=16, size=(1200, 800), tickfontsize=14, labelfontsize=20)
+	min_ys =  [ 9.46739000e-01, 2.10734064e+00]
 	min_hs = fn.(min_ys)
 	fn2 = Base.Fix1(h, 3.0)
-	plot!(p1, -6:0.01:6, fn2, dpi=600, label=L"\left.h(x, y)\right|_{x=3}", lw=4)
-	min_y2s = [-3.20415926, 3.89267647]
+	plot!(p1, 0.5:0.01:2.51, fn2, dpi=600, label=L"\left.h(x, y)\right|_{x=3}", lw=4)
+	min_y2s = [ 1.11348811e+00, 2.25927595e+00]
 	min_h2s = fn2.(min_y2s)
 	plot!(p1, [min_ys[1], min_y2s[1]], [min_hs[1], min_h2s[1]], arrow=true, lw=4, color=:black, label=false)
 	plot!(p1, [min_ys[2], min_y2s[2]], [min_hs[2], min_h2s[2]], arrow=true, lw=4, color=:black, label=false)

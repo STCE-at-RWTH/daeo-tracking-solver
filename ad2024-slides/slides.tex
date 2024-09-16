@@ -2,11 +2,12 @@
 \usepackage[utf8]{inputenc}
 \usepackage[url=false]{biblatex}
 \addbibresource{daeos.bib}
+\renewcommand{\bibfont}{\normalfont\tiny}
 \usepackage{color}
 \usepackage{url}
 \usepackage{algorithmic}
 \usepackage{amsmath, amssymb, amsxtra, accents}
-\usepackage{graphicx}
+\usepackage{graphicx, tabularx}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric}
 
@@ -84,14 +85,15 @@
 \frametitle{Motivation}
 \vfill
 	Consider the following differential equation with an embedded optimization problem (DAEO):
-	\begin{equation}
-		\label{eq:newtonian-daeo}
-		\begin{aligned}
-		\partial_t x(t) &= f(x, y) = \argmin_y h(x, y) \qquad 0<t<T \\
-		h(x, y) &= \left(\frac{x-y}{3}\right)^2 + 3\cos(\frac{\pi}{4}y)\\
-		x(0) &= x_0
-		\end{aligned}
-	\end{equation}
+\begin{equation}
+	\label{eq:complicated-example}
+	\begin{aligned}
+		x(0) &= 1\\
+		\dot x(t) &= y^\star(t)\\
+		\left\{y^k(t)\right\} &= \argmin_{y} h(x, y)\\
+		h(x, y) &= (x-y)^2 + \sin 5y
+	\end{aligned}
+\end{equation}
 \vfill
 How might we approach solving this equation numerically?
 \vfill
@@ -111,8 +113,8 @@ How might we approach solving this equation numerically?
 	\begin{equation}
 		\begin{aligned}
 			\label{eq:bad-time-stepping}
-			y^\star(t) &= \argmin_y h(x^k(t), y)\\
-			x^{k+1} &= x^{k} + \frac{\Delta t}{2}\left(f(x^k, y^\star) + f(x^{k+1}, y^\star)\right)
+			y^{k\star} &= \argmin_y h(x^k, y)\\
+			x^{k+1} &= x^{k} + \frac{\Delta t}{2}\left(f(x^k, y^{k\star}) + f(x^{k+1}, y^{k\star})\right)
 		\end{aligned}
 	\end{equation}
 	\vfill
@@ -124,9 +126,30 @@ How might we approach solving this equation numerically?
 \end{frame}
 
 \begin{frame}
+	\frametitle{Notation}
+	\begin{minipage}{0.45\columnwidth}
+		\begin{itemize}
+			\item $\left\{y_i\right\}$ is the set of minimizers of $h(x, y)$
+			\item $y^\star$ is the global minimizer of $h$
+			\item $\nabla_y f$ is the gradient of $f$ w.r.t. $y$
+			\item $\partial_y f$ and $d_y f$ are partial and total derivatives, respectively. 
+		\end{itemize}
+	\end{minipage}
+	\hfill
+	\begin{minipage}{0.45\columnwidth}
+		\begin{itemize}
+			\item $\Delta t$ is the time step size.
+			\item $x^k$ is the value of $x$ at time step $t^k$
+			\item $y^k_i$ is the value of $y_i$ at time step $t^k$
+		\end{itemize}
+	\end{minipage}
+\end{frame}
+
+\begin{frame}
 	\frametitle{Motivation}
 	\vfill
-	Without some way to detect a global optimizer change during a time step, any integration method we choose for $x(t)$ will have its order of convergence \textit{reduced to 1}!
+	Without some way to detect a global optimizer change during a time step, any integration method we choose for $x(t)$ will have its order of convergence \textit{reduced to 1} \supercite{mannshardtOnestepMethodsAny1978}!
+	\vfill
 \end{frame}
 
 \section{Global Optimization with Interval Arithmetic}
@@ -213,6 +236,7 @@ How might we approach solving this equation numerically?
 	\begin{equation}
 		h(x(\tau), y^\star(\tau)) = h(x(\tau), y^i(\tau))
 	\end{equation}
+	\vfill
 	Two scenarios can lead to an event:
 	\begin{itemize}
 		\item The global optimizer shifts from $y^i(t)$ to $y^j(t)$ as the system evolves.
@@ -237,40 +261,161 @@ How might we approach solving this equation numerically?
 
 \begin{frame}
 	\frametitle{Local Optimizer Tracking}
-Estimating local optimizer drift:
-	\begin{equation*}
+	\begin{block}{Local Optimizer Drift Estimate}
+	\begin{equation}
 		\label{eq:local-tracking-guess}
 		\begin{aligned}
-			0&=\partial_{y}h(x, y^k)\\
-			0&=d_x\partial_yh(x, y^k)\\
-			0&=\partial^2_{yy}h(x, y^k)\cdot\partial_xy^k + \partial^2_{xy}h(x,y^k)\\
-			\partial_xy^k &= -\left(\partial^2_{yy}h(x,y^k)\right)^{-1}\partial^2_{xy}h(x, y^k)
-		\end{aligned}
-	\end{equation*}
-	Time stepping:
-	\begin{equation}
-		\label{eq:integrator-with-tracking}
-		\begin{aligned}
-			0 &= x^k - x^{k+1} + \frac{\Delta t}{2}\left(f(x^k, 	y^{\star,n})+f(x^{k+1}, y^{\star,k+1})\right)\\
-			0 &= \partial_{y^k_i}h\left(x^{k+1}, y^{k+1}_i\right)
+			0&=\partial_{y}h(x, y_i)\\
+			0&=d_x\partial_yh(x, y_i)\\
+			0&=\partial^2_{yy}h(x, y_i)\cdot\partial_xy_i + \partial^2_{xy}h(x,y_i)\\
+			\partial_xy_i &= -\left(\partial^2_{yy}h(x,y_i)\right)^{-1}\partial^2_{xy}h(x, y_i)\\
+			\partial_ty_i &= -\left(\partial^2_{yy}h(x,y_i)\right)^{-1}\partial^2_{xy}h(x, y_i)f(x, y_i)
 		\end{aligned}
 	\end{equation}
+	\end{block}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Local Optimizer Tracking}
+	\begin{block}{An Integrator for DAEOs}
+			Time stepping:
+		\begin{equation}
+			\label{eq:integrator-with-tracking}
+			\begin{aligned}
+				0 &= x^k - x^{k+1} + \frac{\Delta t}{2}\left(f(x^k, 	y^{\star,n})+f(x^{k+1}, y^{\star,k+1})\right)\\
+				0 &= \partial_{y^k_i}h\left(x^{k+1}, y^{k+1}_i\right)
+			\end{aligned}
+		\end{equation}
+		In practice, a suitable guess for $x^{k+1}$ and $y_i^{k+1}$ is
+		\begin{equation*}
+			\begin{aligned}
+				x^{k+1} &= x^k + f(x^k, y^{\star, k})\Delta t\\
+				y_i^{k+1} &= y_i^k + \partial_ty_i^k \Delta t
+			\end{aligned}
+		\end{equation*}
+	\end{block}
 \end{frame}
 
 \section{Performance Testing}
+\begin{frame}
+	\frametitle{A Simpler Example}
+	\vfill
+		\begin{equation*}
+			\label{eq:the-easy-one}
+			\begin{aligned}
+				x(0) &= 1\\
+				\dot x(t) &= -(2+y^\star(t))x\\
+				\left\{y^k(t)\right\} &= \argmin_y h(x,y)\\
+				h(x, y) &= (1-y^2)^2 - (x-\frac{1}{2})\sin\left(\frac{\pi y}{2}\right) 
+			\end{aligned}
+		\end{equation*}
+	\vfill
+\end{frame}
+
+\begin{frame}
+	\frametitle{A Simpler Example}
+	\begin{center}
+		\includegraphics[width=0.9\columnwidth]{../gfx/easy_daeo_solution.pdf}
+	\end{center}
+\end{frame}
+\begin{frame}
+	\frametitle{A Simpler Example}
+	\begin{center}
+		\includegraphics[width=0.9\columnwidth]{../gfx/easy_daeo_convergence.pdf}
+	\end{center}
+\end{frame}
+
+\begin{frame}
+	\frametitle{A Simpler Example}
+	
+	\begin{center}
+	%	\includegraphics[width=0.5\textwidth]{gfx/easy_cost.pdf}
+	\begin{tabularx}{\textwidth}{| >{\centering\arraybackslash}X | >{\raggedleft\arraybackslash}X |  >{\raggedleft\arraybackslash}X | >{\raggedleft\arraybackslash}X |}
+		\hline
+		$\Delta t$ & No Event Detection & Event Detection & Always Run Global Optimizer \\
+		\hline
+		2.50e-01 & 3 ms & 15 ms & 23 ms  \\
+		2.50e-02 & 14 ms & 20 ms & 83 ms  \\
+		2.50e-03 & 122 ms & 126 ms & 793 ms  \\
+		2.50e-04 & 1125 ms & 1051 ms & 7593 ms  \\
+		2.50e-05 & 11354 ms & 10444 ms & 74874 ms  \\
+		2.50e-06 & 107298 ms & 109945 ms & 744696 ms \\\hline
+	\end{tabularx}
+	\end{center}
+\end{frame}
+
+\begin{frame}
+	\frametitle{The Original Example}
+	\begin{equation*}
+		\begin{aligned}
+			x(0) &= 1\\
+			\dot x(t) &= y^\star(t)\\
+			\left\{y^k(t)\right\} &= \argmin_{y} h(x, y)\\
+			h(x, y) &= (x-y)^2 + \sin 5y
+		\end{aligned}
+	\end{equation*}
+\end{frame}
+
+\begin{frame}
+	\frametitle{The Original Example}
+	\begin{center}
+		\includegraphics[width=0.9\columnwidth]{../gfx/hard_daeo_solution.pdf}
+	\end{center}
+\end{frame}
+
+\begin{frame}
+	\frametitle{The Original Example}
+	\begin{center}
+		\includegraphics[width=0.9\columnwidth]{../gfx/hard_daeo_solution_xdot.pdf}
+	\end{center}
+\end{frame}
+
 \section{Context}
 \begin{frame}
 	\frametitle{Context \& Related Work}
+	\vfill
+	The technique developed here could be applied to process engineering problems:
+	\begin{itemize}
+		\item Real-time solutions to optimal-control problems \cite{plochDirectSingleShooting2022}.
+		\item More accurate simulation of flash processes \cite{ritschelAlgorithmGradientbasedDynamic2018}
+	\end{itemize}
+	\vfill
+	Other multi-scale simulation problems could see significant performance improvments:
+	\begin{itemize}
+		\item Biorefinery simulation \cite{plochMultiscaleDynamicModeling2019}
+	\end{itemize}
+	\vfill
 \end{frame}
 \section{Conclusion and Outlook}
 \begin{frame}
 	\frametitle{Conclusions}
-	
+	\vfill
+	\begin{itemize}
+		\item We have successfully restored the 2nd-order convergence of an implicit Euler scheme.
+		\item We avoid expensive global optimizer calls during the integration of a DAEO.
+	\end{itemize}
+	\vfill
+	For all the juicy details...
+	\begin{center}
+		\tt\href{https://github.com/STCE-at-RWTH/daeo-tracking-solver}{STCE-at-RWTH/daeo-tracking-solver}
+	\end{center}
 \end{frame}
 
 \begin{frame}
 	\frametitle{Outlook}
-	I don't want to work on this anymore.
+	The current state of the project leads to some natural next steps:
+	\begin{itemize}
+		\item Can we quantify the quality of an estimate for the local optimizer drift?
+		\item How should we compute derivatives w.r.t. $y$ near events?
+		\item Is it possible to include second-order information in the time stepping for $\left\{y_i\right\}$?
+		\item What are the best choices for hyper-parameters (Event detection threshold, estimates for Lipshitz constants)?
+	\end{itemize}
+	\vfill
+	The global optimizer component could also be very much improved.
+	\begin{itemize}
+		\item How should we perform global optimization under constraints?
+		\item Is there a better way to test interval matrices for positive-definiteness?
+	\end{itemize}
 \end{frame}
 
 \section{References}
