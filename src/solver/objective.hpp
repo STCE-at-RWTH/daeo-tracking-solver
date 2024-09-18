@@ -3,8 +3,8 @@
  * @author Sasha [fleming@stce.rwth-aachen.de]
  * @brief Wrapper classes for functions of the form f(t, x, y, p).
  */
-#ifndef _FUNCTION_WRAPPER_HPP
-#define _FUNCTION_WRAPPER_HPP
+#ifndef _OBJ_FUNCTION_WRAPPER_HPP
+#define _OBJ_FUNCTION_WRAPPER_HPP
 
 #include <type_traits>
 
@@ -22,8 +22,7 @@ struct is_boost_interval<boost::numeric::interval<T, POLICIES>>
     : std::true_type {};
 
 template <typename T, int ROWS, int COLS>
-struct is_boost_interval<Eigen::Matrix<T, ROWS, COLS>> : is_boost_interval<T> {
-};
+struct is_boost_interval<Eigen::Matrix<T, ROWS, COLS>> : is_boost_interval<T> {};
 
 template <typename T>
 concept IsInterval = is_boost_interval<T>::value;
@@ -56,7 +55,7 @@ concept PreservesIntervals =
  * optimizer and solver. Assumes that the return type of f is a scalar and
  * matches the type of scalar y.
  */
-template <typename FN> class DAEOWrappedFunction {
+template <typename FN> class WrappedObjective {
 
   mutable size_t n_h_evaluations = 0;
   mutable size_t n_dy_evaluations = 0;
@@ -71,10 +70,10 @@ template <typename FN> class DAEOWrappedFunction {
   /**
    * @brief The function to wrap and augment with partial derivative routines.
    */
-  FN const wrapped_fn;
+  FN const fn;
 
 public:
-  DAEOWrappedFunction(FN const &t_fn) : wrapped_fn{t_fn} {};
+  WrappedObjective(FN const &t_fn) : fn{t_fn} {};
 
   /**
    * @brief Evaluate @c m_fn at the provided arguments.
@@ -86,9 +85,9 @@ public:
   auto objective_value(NUMERIC_T const t, Eigen::Vector<XT, XDIMS> const &x,
                        Eigen::Vector<YT, YDIMS> const &y,
                        Eigen::Vector<NUMERIC_T, PDIMS> const &p) const
-      -> decltype(wrapped_fn(t, x, y, p)) {
+      -> decltype(fn(t, x, y, p)) {
     n_h_evaluations += 1;
-    return wrapped_fn(t, x, y, p);
+    return fn(t, x, y, p);
   }
 
   template <typename T, typename X, typename Y_ACTIVE_T, int XDIMS, int YDIMS,
@@ -96,7 +95,7 @@ public:
   auto grad_y(T const t, Eigen::Vector<X, XDIMS> const &x,
               Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
               Eigen::Vector<T, PDIMS> const &p) const
-      -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), YDIMS> {
+      -> Eigen::Vector<decltype(fn(t, x, y, p)), YDIMS> {
     n_dy_evaluations += 1;
     using dco_mode_t = dco::gt1s<Y_ACTIVE_T>;
     using active_t = typename dco_mode_t::type;
@@ -113,7 +112,7 @@ public:
     Eigen::Vector<Y_ACTIVE_T, YDIMS> dhdy(y.rows());
     for (int i = 0; i < y.rows(); i++) {
       dco::derivative(y_active(i)) = 1;
-      h_active = wrapped_fn(t, x, y_active, p);
+      h_active = fn(t, x, y_active, p);
       dhdy(i) = dco::derivative(h_active);
       dco::derivative(y_active(i)) = 0;
     }
@@ -125,7 +124,7 @@ public:
   auto grad_x(T const t, Eigen::Vector<X_ACTIVE_T, XDIMS> const &x,
               Eigen::Vector<Y, YDIMS> const &y,
               Eigen::Vector<T, PDIMS> const &p) const
-      -> Eigen::Vector<decltype(wrapped_fn(t, x, y, p)), XDIMS> {
+      -> Eigen::Vector<decltype(fn(t, x, y, p)), XDIMS> {
     n_dx_evaluations += 1;
     using dco_mode_t = dco::gt1s<X_ACTIVE_T>;
     using active_t = typename dco_mode_t::type;
@@ -137,7 +136,7 @@ public:
     active_t h_active;
     for (int i = 0; i < x.rows(); i++) {
       dco::derivative(x_active(i)) = 1;
-      h_active = wrapped_fn(t, x_active, y, p);
+      h_active = fn(t, x_active, y, p);
       dhdx(i) = dco::derivative(h_active);
       dco::derivative(x_active(i)) = 0;
     }
@@ -149,7 +148,7 @@ public:
   auto hess_y(T const t, Eigen::Vector<X, XDIMS> const &x,
               Eigen::Vector<Y_ACTIVE_T, YDIMS> const &y,
               Eigen::Vector<T, PDIMS> const &p) const
-      -> Eigen::Matrix<decltype(wrapped_fn(t, x, y, p)), YDIMS, YDIMS> {
+      -> Eigen::Matrix<decltype(fn(t, x, y, p)), YDIMS, YDIMS> {
     n_d2y_evaluations += 1;
     using dco_tangent_t = typename dco::gt1s<Y_ACTIVE_T>::type;
     using dco_mode_t = dco::ga1s<dco_tangent_t>;
@@ -172,7 +171,7 @@ public:
     Eigen::Matrix<Y_ACTIVE_T, YDIMS, YDIMS> d2hdy2(y.rows(), y.rows());
     for (int hrow = 0; hrow < y.rows(); hrow++) {
       dco::derivative(dco::value(y_active(hrow))) = 1; // wiggle y[hrow]
-      h_active = wrapped_fn(t, x, y_active, p);        // compute h
+      h_active = fn(t, x, y_active, p);        // compute h
       dco::value(dco::derivative(h_active)) = 1;
       tape->interpret_adjoint_and_reset_to(start_position);
       for (int hcol = 0; hcol < y.rows(); hcol++) {
@@ -191,7 +190,7 @@ public:
   auto d2dxdy(T const t, Eigen::Vector<XY_ACTIVE_T, XDIMS> const &x,
               Eigen::Vector<XY_ACTIVE_T, YDIMS> const &y,
               Eigen::Vector<T, PDIMS> const &p) const
-      -> Eigen::Matrix<decltype(wrapped_fn(t, x, y, p)), XDIMS, YDIMS> {
+      -> Eigen::Matrix<decltype(fn(t, x, y, p)), XDIMS, YDIMS> {
     n_d2xy_evaluations += 1;
     using dco_tangent_t = typename dco::gt1s<XY_ACTIVE_T>::type;
     using dco_mode_t = dco::ga1s<dco_tangent_t>;
@@ -211,7 +210,7 @@ public:
     Eigen::Matrix<XY_ACTIVE_T, XDIMS, YDIMS> ddxddy(x.rows(), y.rows());
     for (int i = 0; i < x_active.rows(); i++) {
       dco::derivative(dco::value(x_active(i))) = 1;    // wiggle x(i)
-      h_active = wrapped_fn(t, x_active, y_active, p); // compute h
+      h_active = fn(t, x_active, y_active, p); // compute h
       dco::value(dco::derivative(h_active)) = 1;       // sensitivity to h is 1
       tape->interpret_adjoint();
       // harvest derivative

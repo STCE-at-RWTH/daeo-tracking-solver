@@ -20,6 +20,7 @@
 #include "fmt/ranges.h"
 
 #include "global_optimizer.hpp"
+#include "xprime.hpp"
 #include "utils/daeo_utils.hpp"
 
 using std::vector;
@@ -322,8 +323,8 @@ public:
   }
 
 private:
-  DAEOWrappedFunction<XPRIME> m_xprime;
-  DAEOWrappedFunction<OBJECTIVE> m_objective;
+  WrappedXPrimeFunction<XPRIME> m_xprime;
+  WrappedObjective<OBJECTIVE> m_objective;
   DAEOSolverSettings<NUMERIC_T> const m_settings;
   optimizer_t m_optimizer;
 
@@ -512,8 +513,8 @@ private:
     result(Eigen::seq(0, start.xdims())) =
         start.x - guess.x +
         dt / 2 *
-            (m_xprime.objective_value(start.t, start.x, start.y[i_star], p) +
-             m_xprime.objective_value(guess.t, guess.x, guess.y[i_star], p));
+            (m_xprime.xprime_value(start.t, start.x, start.y[i_star], p) +
+             m_xprime.xprime_value(guess.t, guess.x, guess.y[i_star], p));
     for (int i = 0; i < start.n_local_optima(); i++) {
       result(Eigen::seqN(1 + i * ydims, ydims)) =
           m_objective.grad_y(guess.t, guess.x, guess.y[i], p);

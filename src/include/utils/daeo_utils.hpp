@@ -29,6 +29,8 @@ template <int DIMS_IN, int DIMS_OUT>
 inline constexpr int propagate_dynamic_v =
     propagate_dynamic<DIMS_IN, DIMS_OUT>::value;
 
+
+
 /**
  * NTuple type, for the lazy programmer in me.
  */
@@ -59,11 +61,11 @@ struct fmt::formatter<boost::numeric::interval<T, P>>
   auto format(boost::numeric::interval<T, P> const &ival,
               FormatContext &ctx) const {
     auto &&out = ctx.out();
-    format_to(out, "[");
+    fmt::format_to(out, "[");
     fmt::formatter<T>::format(ival.lower(), ctx);
-    format_to(out, ", ");
+    fmt::format_to(out, ", ");
     fmt::formatter<T>::format(ival.upper(), ctx);
-    return format_to(out, "]");
+    return fmt::format_to(out, "]");
   }
 };
 

@@ -53,7 +53,7 @@ include_directories(interval/include)
 
 set(objective_headers src/solver/objective.hpp)
 set(bnb_solver_headers src/solver/global_optimizer.hpp src/solver/logging.hpp)
-set(daeo_solver_headers src/solver/daeo_solver.hpp)
+set(daeo_solver_headers src/solver/daeo_solver.hpp src/solver/xprime.hpp)
 
 get_target_property(NAG_dco_cpp_INCLUDE_DIRS NAG::dco_cpp INTERFACE_INCLUDE_DIRECTORIES)
 

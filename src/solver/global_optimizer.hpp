@@ -319,7 +319,7 @@ public:
       : base_t(t_settings), m_objective(t_objective){};
 
 protected:
-  DAEOWrappedFunction<FN> m_objective;
+  WrappedObjective<FN> m_objective;
 
   vector<y_interval_t> process_interval(size_t tasknum, NUMERIC_T t,
                                         x_t const &x, y_interval_t const &y_i,
